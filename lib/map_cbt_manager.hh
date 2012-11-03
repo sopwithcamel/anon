@@ -17,8 +17,7 @@ using namespace google::protobuf::io;
 struct map_cbt_manager_base {
     virtual ~map_cbt_manager_base() {}
     virtual void init(const std::string& libname, uint32_t ncore) = 0;
-    virtual bool emit(void *key, void *val, size_t keylen, unsigned hash,
-            uint32_t core) = 0;
+    virtual bool emit(void *key, void *val, size_t keylen, unsigned hash) = 0;
     virtual void finalize() = 0;
     virtual const Operations* ops() const = 0;
 };
@@ -28,8 +27,7 @@ struct map_cbt_manager : public map_cbt_manager_base {
     map_cbt_manager();
     ~map_cbt_manager();
     void init(const std::string& libname, uint32_t ncore);
-    bool emit(void *key, void *val, size_t keylen, unsigned hash,
-            uint32_t core);
+    bool emit(void *key, void *val, size_t keylen, unsigned hash);
     void finalize();
     const Operations* ops() const {
         assert(ops_);
@@ -41,9 +39,10 @@ struct map_cbt_manager : public map_cbt_manager_base {
   private:
     const uint32_t kInsertAtOnce;
 
+    uint32_t ntrees_;
     uint32_t ncore_;
-    pthread_spinlock_t cbt_lock_;
-    cbt::CompressTree* cbt_;
+    pthread_spinlock_t* cbt_lock_;
+    cbt::CompressTree** cbt_;
     Operations* ops_;
 
     uint32_t* num_buffered_paos_;
@@ -56,56 +55,64 @@ map_cbt_manager::map_cbt_manager() :
 } 
 
 map_cbt_manager::~map_cbt_manager() {
-    for (uint32_t j = 0; j < ncore_; ++j) {
+    for (uint32_t j = 0; j < ncore_ * ntrees_; ++j) {
         for (uint32_t i = 0; i < kInsertAtOnce; ++i)
             ops()->destroyPAO(buffered_paos_[j][i]);
         delete[] buffered_paos_[j];
     }
+
+    for (uint32_t j = 0; j < ntrees_; ++j) {
+        delete cbt_[j];
+        pthread_spin_destroy(&cbt_lock_[j]);
+    }
     delete[] buffered_paos_;
+    delete[] cbt_;
     delete[] num_buffered_paos_;
-    pthread_spin_destroy(&cbt_lock_);
+    delete[] cbt_lock_;
 }
 
 void map_cbt_manager::init(const std::string& libname, uint32_t ncore) {
     assert(link_user_map(libname));
     ncore_ = ncore;
-    assert(ncore_ > 0);
-    num_buffered_paos_ = new uint32_t[ncore_];
-    bzero(num_buffered_paos_, ncore * sizeof(uint32_t));
-    buffered_paos_ = new PartialAgg**[ncore_];
-    for (uint32_t j = 0; j < ncore_; ++j) {
-        buffered_paos_[j] = new PartialAgg*[kInsertAtOnce];
-        for (uint32_t i = 0; i < kInsertAtOnce; ++i)
-            ops()->createPAO(NULL, &buffered_paos_[j][i]);
-    }
+    ntrees_ = 1;
+
+    num_buffered_paos_ = new uint32_t[ncore_ * ntrees_];
+    bzero(num_buffered_paos_, ntrees_ * ncore_ * sizeof(uint32_t));
+    buffered_paos_ = new PartialAgg**[ncore_ * ntrees_];
+    cbt_ = new cbt::CompressTree*[ntrees_];
+    cbt_lock_ = new pthread_spinlock_t[ntrees_];
 
     uint32_t fanout = 8;
     uint32_t buffer_size = 31457280;
     uint32_t pao_size = 20;
-    cbt_ = new cbt::CompressTree(2, fanout, 1000, buffer_size, pao_size, ops_);
-    pthread_spin_init(&cbt_lock_, PTHREAD_PROCESS_PRIVATE);
 
-/*
-    std::stringstream ss;
-    ss << "Hello";
-    IstreamInputStream* ii = new IstreamInputStream(&ss);
-    CodedInputStream* ci = new CodedInputStream(ii);
-*/
+    for (uint32_t j = 0; j < ntrees_; ++j) {
+        cbt_[j] = new cbt::CompressTree(2, fanout, 1000, buffer_size,
+                pao_size, ops_);
+        pthread_spin_init(&cbt_lock_[j], PTHREAD_PROCESS_PRIVATE);
+    }
+
+    for (uint32_t j = 0; j < ncore_ * ntrees_; ++j) {
+        buffered_paos_[j] = new PartialAgg*[kInsertAtOnce];
+        for (uint32_t i = 0; i < kInsertAtOnce; ++i)
+            ops()->createPAO(NULL, &buffered_paos_[j][i]);
+    }
 }
 
-bool map_cbt_manager::emit(void *k, void *v, size_t keylen, unsigned hash,
-        uint32_t core) {
-    core = threadinfo::current()->cur_core_;
-    PartialAgg** buf = buffered_paos_[core];
-    uint32_t& ind = num_buffered_paos_[core];
-//    fprintf(stderr, "[%ld], inserted at %d on core [%d]\n", pthread_self(), ind, core);
+bool map_cbt_manager::emit(void *k, void *v, size_t keylen, unsigned hash) {
+    uint32_t treeid = 0; //hash & (ncore_ - 1);
+    uint32_t coreid = threadinfo::current()->cur_core_;
+    PartialAgg** buf = buffered_paos_[coreid * ntrees_ + treeid];
+    uint32_t& ind = num_buffered_paos_[coreid * ntrees_ + treeid];
     ops()->setKey(buf[ind], (char*)k);
+
     if (++ind == kInsertAtOnce) {
-        pthread_spin_lock(&cbt_lock_);
-        assert(cbt_->bulk_insert(buf, ind));
+        pthread_spin_lock(&cbt_lock_[treeid]);
+        assert(cbt_[treeid]->bulk_insert(buf, ind));
         ind = 0;
-        pthread_spin_unlock(&cbt_lock_);
+        pthread_spin_unlock(&cbt_lock_[treeid]);
     }
+//    fprintf(stderr, "[%ld], inserted at %d\n", pthread_self(), ind);
     return true;
 }
 
@@ -130,18 +137,20 @@ bool map_cbt_manager::link_user_map(const std::string& soname) {
 }
 
 void map_cbt_manager::finalize() {
-    bool remain;
+    uint32_t treeid = 0; //hash & (ncore_ - 1);
+    uint32_t coreid = threadinfo::current()->cur_core_;
+    PartialAgg** buf = buffered_paos_[coreid * ntrees_ + treeid];
     uint64_t num_read;
-    uint32_t core = threadinfo::current()->cur_core_;
-    PartialAgg** buf = buffered_paos_[core];
 
-    do {
-        pthread_spin_lock(&cbt_lock_);
-        remain = cbt_->bulk_read(buf, num_read, kInsertAtOnce);
-        pthread_spin_unlock(&cbt_lock_);
-
+    for (uint32_t i = 0; i < ntrees_; ++i) {
+        bool remain = true;
+        do {
+            pthread_spin_lock(&cbt_lock_[treeid]);
+            remain = cbt_[i]->bulk_read(buf, num_read, kInsertAtOnce);
+            pthread_spin_unlock(&cbt_lock_[treeid]);
         // copy results
-    } while (remain);
+        } while (remain);
+    }
 }
 
 #endif

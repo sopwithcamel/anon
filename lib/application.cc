@@ -27,6 +27,7 @@
 #include "thread.hh"
 #include "map_cbt_manager.hh"
 #include "array.hh"
+#include "HashUtil.h"
 
 //mapreduce_appbase *static_appbase::the_app_ = NULL;
 
@@ -180,9 +181,8 @@ void mapreduce_appbase::print_stats(void) {
 }
 
 void mapreduce_appbase::map_emit(void *k, void *v, int keylen) {
-    unsigned hash = partition(k, keylen);
-    static uint32_t core = threadinfo::current()->cur_core_;
-    m_->emit(k, v, keylen, hash, core);
+    unsigned hash = HashUtil::MurmurHash(k, keylen, 42);
+    m_->emit(k, v, keylen, hash);
 }
 
 void mapreduce_appbase::reset() {
