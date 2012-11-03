@@ -15,6 +15,7 @@
 #ifndef BENCH_HH_
 #define BENCH_HH_ 1
 
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <sys/time.h>
