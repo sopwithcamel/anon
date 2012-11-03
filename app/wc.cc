@@ -27,6 +27,7 @@
 #include <string.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <gperftools/profiler.h>
 #include <assert.h>
 #include <fcntl.h>
 #include <ctype.h>
@@ -141,7 +142,9 @@ int main(int argc, char *argv[]) {
     app.set_ncore(nprocs);
     app.set_library_name("/usr/local/lib/minni/wc_proto.so");
 
+    ProfilerStart("/tmp/anon.perf");
     app.sched_run();
+    ProfilerStop();
     app.print_stats();
     /* get the number of results to display */
     if (!quiet)
