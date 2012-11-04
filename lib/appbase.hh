@@ -40,9 +40,13 @@ struct mapreduce_appbase {
 	    h = ((h << 5) + h) + unsigned(x[i]);
         return h % unsigned(-1);
     } 
-    /* @brief: set the number of cores to use. Metis uses all cores by default. */
+    /* @brief: set the number of cores to use. We use all cores by default. */
     void set_ncore(int ncore) {
         ncore_ = ncore;
+    }
+    /* @brief: set the number of trees to use. We use one tree by default. */
+    void set_ntrees(int ntree) {
+        ntree_ = ntree;
     }
     void set_library_name(const std::string& libname) {
         library_name_ = libname;
@@ -77,6 +81,7 @@ struct mapreduce_appbase {
 
   private:
     int ncore_;   
+    int ntree_;
     std::string library_name_;
     uint64_t total_sample_time_;
     uint64_t total_map_time_;

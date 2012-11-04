@@ -20,7 +20,8 @@ using namespace google::protobuf::io;
 
 struct map_cbt_manager_base {
     virtual ~map_cbt_manager_base() {}
-    virtual void init(const std::string& libname, uint32_t ncore) = 0;
+    virtual void init(const std::string& libname, uint32_t ncore,
+            uint32_t ntree) = 0;
     virtual bool emit(void *key, void *val, size_t keylen, unsigned hash) = 0;
     virtual void finalize() = 0;
     virtual const Operations* ops() const = 0;
@@ -43,7 +44,8 @@ struct args_struct {
 struct map_cbt_manager : public map_cbt_manager_base {
     map_cbt_manager();
     ~map_cbt_manager();
-    void init(const std::string& libname, uint32_t ncore);
+    void init(const std::string& libname, uint32_t ncore,
+            uint32_t ntree);
     bool emit(void *key, void *val, size_t keylen, unsigned hash);
     void finalize();
     const Operations* ops() const {
@@ -57,7 +59,7 @@ struct map_cbt_manager : public map_cbt_manager_base {
   private:
     const uint32_t kInsertAtOnce;
 
-    uint32_t ntrees_;
+    uint32_t ntree_;
     uint32_t ncore_;
     cbt::CompressTree** cbt_;
     Operations* ops_;
@@ -84,7 +86,7 @@ map_cbt_manager::~map_cbt_manager() {
     delete bufpool_;
 
     // clean up CBTs
-    for (uint32_t j = 0; j < ntrees_; ++j) {
+    for (uint32_t j = 0; j < ntree_; ++j) {
         delete cbt_[j];
         pthread_mutex_destroy(&cbt_worker_list_lock_[j]);
         pthread_cond_destroy(&cbt_queue_empty_[j]);
@@ -94,20 +96,21 @@ map_cbt_manager::~map_cbt_manager() {
     delete[] cbt_queue_empty_;
 }
 
-void map_cbt_manager::init(const std::string& libname, uint32_t ncore) {
+void map_cbt_manager::init(const std::string& libname, uint32_t ncore,
+        uint32_t ntree) {
     assert(link_user_map(libname));
     ncore_ = ncore;
-    ntrees_ = 1;
+    ntree_ = ntree;
 
     // create CBTs
-    cbt_ = new cbt::CompressTree*[ntrees_];
-    cbt_worker_list_lock_ = new pthread_mutex_t[ntrees_];
-    cbt_queue_empty_ = new pthread_cond_t[ntrees_];
+    cbt_ = new cbt::CompressTree*[ntree_];
+    cbt_worker_list_lock_ = new pthread_mutex_t[ntree_];
+    cbt_queue_empty_ = new pthread_cond_t[ntree_];
 
     uint32_t fanout = 8;
     uint32_t buffer_size = 31457280;
     uint32_t pao_size = 20;
-    for (uint32_t j = 0; j < ntrees_; ++j) {
+    for (uint32_t j = 0; j < ntree_; ++j) {
         cbt_[j] = new cbt::CompressTree(2, fanout, 1000, buffer_size,
                 pao_size, ops_);
         pthread_mutex_init(&cbt_worker_list_lock_[j], NULL);
@@ -118,31 +121,38 @@ void map_cbt_manager::init(const std::string& libname, uint32_t ncore) {
     }
 
     // set up workers for insertion into CBTs
-    tid_ = new pthread_t[ntrees_];
+    tid_ = new pthread_t[ntree_];
     // sending two arguments to workers
     std::vector<args_struct*> args;
-    for (uint32_t j = 0; j < ntrees_; ++j) {
+
+    // set all cpus in cpu mask
+    cpu_set_t cset;
+    CPU_ZERO(&cset);
+    for (uint32_t i = 0; i < JOS_NCPU; ++i)
+        CPU_SET(i, &cset);
+    for (uint32_t j = 0; j < ntree_; ++j) {
         args_struct* a = new args_struct(2);
         a->argv[0] = (void*)this;
         a->argv[1] = (void*)((intptr_t)j);
         args.push_back(a);
         pthread_create(&tid_[j], NULL, worker, a);
+        pthread_setaffinity_np(tid_[j], sizeof(cpu_set_t), &cset);
     }
 
     // create a pool of buffers
-    bufpool_ = new bufferpool(ops_, kInsertAtOnce, ncore_ * ntrees_ * 2);
-    buffered_paos_ = new PAOArray*[ncore_ * ntrees_];
-    for (uint32_t j = 0; j < ncore_ * ntrees_; ++j) {
+    bufpool_ = new bufferpool(ops_, kInsertAtOnce, ncore_ * ntree_ * 2);
+    buffered_paos_ = new PAOArray*[ncore_ * ntree_];
+    for (uint32_t j = 0; j < ncore_ * ntree_; ++j) {
         buffered_paos_[j] = bufpool_->get_buffer();
     }
-    for (uint32_t j = 0; j < ntrees_; ++j)
+    for (uint32_t j = 0; j < ntree_; ++j)
         delete args[j];
 }
 
 bool map_cbt_manager::emit(void *k, void *v, size_t keylen, unsigned hash) {
-    uint32_t treeid = hash % ntrees_;
+    uint32_t treeid = hash % ntree_;
     uint32_t coreid = threadinfo::current()->cur_core_;
-    uint32_t bufid = coreid * ntrees_ + treeid;
+    uint32_t bufid = coreid * ntree_ + treeid;
     PAOArray* buf = buffered_paos_[bufid];
     uint32_t ind = buf->index();
     ops()->setKey(buf->list()[ind], (char*)k);
@@ -187,6 +197,8 @@ void* map_cbt_manager::worker(void *x) {
     map_cbt_manager* m = (map_cbt_manager*)(a->argv[0]);
     uint32_t treeid = (intptr_t)(a->argv[1]);
     std::deque<PAOArray*>* q = m->cbt_queue_[treeid];
+    cpu_set_t cset;
+    pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &cset);
 
     while (q->empty()) {
         pthread_mutex_lock(&m->cbt_worker_list_lock_[treeid]);
@@ -214,10 +226,10 @@ void* map_cbt_manager::worker(void *x) {
 void map_cbt_manager::finalize() {
     uint32_t treeid = 0; //hash & (ncore_ - 1);
     uint32_t coreid = threadinfo::current()->cur_core_;
-    PAOArray* buf = buffered_paos_[coreid * ntrees_ + treeid];
+    PAOArray* buf = buffered_paos_[coreid * ntree_ + treeid];
     uint64_t num_read;
 
-    for (uint32_t i = 0; i < ntrees_; ++i) {
+    for (uint32_t i = 0; i < ntree_; ++i) {
         bool remain = true;
         do {
             pthread_mutex_lock(&cbt_worker_list_lock_[i]);

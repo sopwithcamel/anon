@@ -42,7 +42,7 @@ void cprint(const char *key, uint64_t v, const char *delim) {
 }
 
 mapreduce_appbase::mapreduce_appbase() 
-    : ncore_(), total_sample_time_(),
+    : ncore_(), ntree_(), total_sample_time_(),
       total_map_time_(), total_finalize_time_(),
       total_real_time_(), clean_(true),
       next_task_(), phase_(), m_(NULL) {
@@ -61,7 +61,7 @@ void mapreduce_appbase::deinitialize() {
 
 map_cbt_manager_base *mapreduce_appbase::create_map_cbt_manager() {
     map_cbt_manager_base *m = new map_cbt_manager();
-    m->init(library_name_, ncore_);
+    m->init(library_name_, ncore_, ntree_);
     return m;
 };
 
@@ -135,6 +135,8 @@ int mapreduce_appbase::sched_run() {
     assert(ncore_ <= max_ncore);
     if (!ncore_)
         ncore_ = max_ncore;
+    if (!ntree_)
+        ntree_ = 1;
 
     // initialize threads
     mthread_init(ncore_);
@@ -156,7 +158,7 @@ int mapreduce_appbase::sched_run() {
     // map phase
     run_phase(MAP, ncore_, map_time);
     // finalize phase
-    run_phase(FINALIZE, ncore_, finalize_time);
+//    run_phase(FINALIZE, ncore_, finalize_time);
     set_final_result();
     total_map_time_ += map_time;
     total_finalize_time_ += finalize_time;

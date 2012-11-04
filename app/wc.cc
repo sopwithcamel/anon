@@ -97,7 +97,7 @@ static void usage(char *prog) {
 }
 
 int main(int argc, char *argv[]) {
-    int nprocs = 0, map_tasks = 0, ndisp = 5;
+    int nprocs = 0, map_tasks = 0, ndisp = 5, ntrees = 0;
     int quiet = 0;
     int c;
     if (argc < 2)
@@ -105,10 +105,13 @@ int main(int argc, char *argv[]) {
     char *fn = argv[1];
     FILE *fout = NULL;
 
-    while ((c = getopt(argc - 1, argv + 1, "p:s:l:m:r:qao:")) != -1) {
+    while ((c = getopt(argc - 1, argv + 1, "p:t:s:l:m:r:qao:")) != -1) {
         switch (c) {
             case 'p':
                 nprocs = atoi(optarg);
+                break;
+            case 't':
+                ntrees = atoi(optarg);
                 break;
             case 'l':
                 ndisp = atoi(optarg);
@@ -140,11 +143,12 @@ int main(int argc, char *argv[]) {
     /* get input file */
     wc app(fn, map_tasks);
     app.set_ncore(nprocs);
+    app.set_ntrees(ntrees);
     app.set_library_name("/usr/local/lib/minni/wc_proto.so");
 
-    ProfilerStart("/tmp/anon.perf");
+//    ProfilerStart("/tmp/anon.perf");
     app.sched_run();
-    ProfilerStop();
+//    ProfilerStop();
     app.print_stats();
     /* get the number of results to display */
     if (!quiet)
