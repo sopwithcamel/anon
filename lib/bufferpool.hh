@@ -2,6 +2,7 @@
 #define BUFFERPOOL_HH 1
 
 #include <assert.h>
+#include <pthread.h>
 #include <boost/pool/object_pool.hpp>
 
 #include "PartialAgg.h"
@@ -43,6 +44,52 @@ struct PAOArray {
     uint32_t index_;
 };
 
-typedef boost::object_pool<PAOArray> bufferpool;
+struct bufferpool {
+    explicit bufferpool(const Operations* ops, uint32_t max_elements_per_array,
+            uint32_t max_num_arrays) :
+            ops_(ops),
+            max_elements_per_array_(max_elements_per_array),
+            max_number_of_arrays_(max_num_arrays) {
+        pthread_mutex_init(&lock_, NULL);
+        pthread_cond_init(&empty_, NULL);
+        for (uint32_t i = 0; i < max_number_of_arrays_; ++i) {
+            PAOArray* pa = new PAOArray(ops_, max_elements_per_array_);
+            arrays_.push_back(pa);
+        }
+    }
+    ~bufferpool() {
+        pthread_mutex_destroy(&lock_);
+        pthread_cond_destroy(&empty_);
+        for (uint32_t i = 0; i < max_number_of_arrays_; ++i) {
+            PAOArray* pa = arrays_.front();
+            arrays_.pop_front();
+            delete pa;
+        }
+    }
+    PAOArray* get_buffer() {
+        pthread_mutex_lock(&lock_);
+        while (arrays_.empty()) {
+            pthread_cond_wait(&empty_, &lock_);
+        }
+        PAOArray* ret = arrays_.front();
+        arrays_.pop_front();
+        pthread_mutex_unlock(&lock_);
+        return ret;
+    }
+    void return_buffer(PAOArray* a) {
+        a->init();
+        pthread_mutex_lock(&lock_);
+        arrays_.push_back(a);
+        pthread_cond_signal(&empty_);
+        pthread_mutex_unlock(&lock_);
+    }
+  private:
+    const Operations* ops_;
+    const uint32_t max_elements_per_array_;
+    const uint32_t max_number_of_arrays_;
+    std::deque<PAOArray*> arrays_;
+    pthread_mutex_t lock_;
+    pthread_cond_t empty_;
+};
 
 #endif  // BUFFERPOOL_HH
