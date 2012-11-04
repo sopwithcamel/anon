@@ -110,7 +110,7 @@ map_cbt_manager::~map_cbt_manager() {
 void map_cbt_manager::init(const std::string& libname, uint32_t ncore) {
     assert(link_user_map(libname));
     ncore_ = ncore;
-    ntrees_ = 4;
+    ntrees_ = 1;
 
     // create CBTs
     cbt_ = new cbt::CompressTree*[ntrees_];
@@ -178,12 +178,16 @@ bool map_cbt_manager::emit(void *k, void *v, size_t keylen, unsigned hash) {
         zmq::message_t request(sizeof(void*));
         memcpy((void*)request.data(), &buf, sizeof(void*));        
 //        fprintf(stderr, "Sending address %p %p\n", buf, request.data());
-        client_socket_[bufid]->send(request);
+        int ret;
+        do {
+            ret = client_socket_[bufid]->send(request);
+        } while (ret != 0 && zmq_errno() == EINTR);
 
         //  Wait for reply...
         zmq::message_t reply;
-        client_socket_[bufid]->recv(&reply);
-//        assert(!strcmp(reinterpret_cast<char*>(reply.data()), "True"));
+        do {
+            ret = client_socket_[bufid]->recv(&reply);
+        } while (ret != 0 && zmq_errno() == EINTR);
 
         // get new buffer from pool
         buffered_paos_[bufid] = get_new_buffer();
@@ -230,17 +234,22 @@ void* map_cbt_manager::worker(void *x) {
 
     while (true) {
         zmq::message_t request;
-        socket.recv(&request);
+        int ret;
+        do {
+            ret = socket.recv(&request);
+        } while (ret != 0 && zmq_errno() == EINTR);
 
         //  Send reply back to client
         zmq::message_t reply (4);
         memcpy((void *)reply.data(), "True", 4);
-        socket.send(reply);
+        do {
+            ret = socket.send(reply);
+        } while (ret != 0 && zmq_errno() == EINTR);
 
         PAOArray* buf;
         memcpy(&buf, (void*)request.data(), sizeof(void*));
 //        fprintf(stderr, "Received address %p\n", buf);
-        bool ret = m->cbt_[treeid]->bulk_insert(buf->list(), buf->index());
+        m->cbt_[treeid]->bulk_insert(buf->list(), buf->index());
 
         // initialize buffer and free
         buf->init();
