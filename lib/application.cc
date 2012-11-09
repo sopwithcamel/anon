@@ -122,22 +122,8 @@ void mapreduce_appbase::run_phase(int phase, int ncore, uint64_t &t) {
         if (i == main_core)
             continue;
         mthread_create(&tid[i], i, base_worker, this);
-        cpu_set_t cset;
-        CPU_ZERO(&cset);
-        for (uint32_t j = 6; j < 12; ++j)
-            CPU_SET(j, &cset);
-        for (uint32_t j = 18; j < 24; ++j)
-            CPU_SET(j, &cset);
-        pthread_setaffinity_np(tid[i], sizeof(cpu_set_t), &cset);
     }
     mthread_create(&tid[main_core], main_core, base_worker, this);
-    cpu_set_t cset;
-    CPU_ZERO(&cset);
-    for (uint32_t i = 0; i < 6; ++i)
-        CPU_SET(i, &cset);
-    for (uint32_t i = 12; i < 18; ++i)
-        CPU_SET(i, &cset);
-    pthread_setaffinity_np(tid[main_core], sizeof(cpu_set_t), &cset);
     for (int i = 0; i < ncore; ++i) {
         if (i == main_core)
             continue;

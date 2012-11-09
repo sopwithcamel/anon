@@ -161,23 +161,6 @@ void map_cbt_manager::init(const std::string& libname, uint32_t ncore,
         args.push_back(a);
         pthread_create(&tid_[j], NULL, worker, a);
     }
-    cpu_set_t cset;
-    CPU_ZERO(&cset);
-    for (uint32_t i = 0; i < 6; ++i)
-        CPU_SET(i, &cset);
-    for (uint32_t i = 12; i < 18; ++i)
-        CPU_SET(i, &cset);
-    pthread_setaffinity_np(tid_[0], sizeof(cpu_set_t), &cset);
-
-    CPU_ZERO(&cset);
-    for (uint32_t i = 6; i < 12; ++i)
-        CPU_SET(i, &cset);
-    for (uint32_t i = 18; i < 24; ++i)
-        CPU_SET(i, &cset);
-    pthread_setaffinity_np(tid_[1], sizeof(cpu_set_t), &cset);
-
-    for (uint32_t j = 0; j < ntree_; ++j)
-        delete args[j];
 }
 
 void map_cbt_manager::submit_array(uint32_t treeid, PAOArray* buf) {

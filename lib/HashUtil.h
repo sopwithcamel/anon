@@ -7,7 +7,6 @@
 #include <stdint.h>
 #include <openssl/evp.h>
 #include <string>
-#include "fnv.h"
 
 using namespace std;
 
@@ -56,10 +55,6 @@ class HashUtil {
     // MurmurHash2
     static uint32_t MurmurHash(const void *buf, size_t length, uint32_t seed = 0);
     static uint32_t MurmurHash(const string &s, uint32_t seed = 0);
-
-    // FNV Hash
-    static uint32_t FNVHash(const void *buf, size_t length);
-    static uint32_t FNVHash(const string &s);
 
     // SuperFastHash
     static uint32_t SuperFastHash(const void *buf, size_t len);
