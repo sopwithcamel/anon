@@ -67,9 +67,18 @@ map_cbt_manager_base *mapreduce_appbase::create_map_cbt_manager() {
 
 int mapreduce_appbase::map_worker() {
     int n, next;
+    cpu_set_t cset;
+    CPU_ZERO(&cset);
+    CPU_SET(threadinfo::current()->cur_core_, &cset);
+    pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cset);
+    pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &cset);
+    for (uint32_t i = 0; i < JOS_NCPU; ++i)
+        if (CPU_ISSET(i, &cset))
+            fprintf(stderr, "%d: CPU %d\n", pthread_self(), i);
     for (n = 0; (next = next_task()) < int(ma_.size()); ++n) {
         map_function(ma_.at(next));
     }
+    m_->map_finish();
     return n;
 }
 
@@ -113,8 +122,22 @@ void mapreduce_appbase::run_phase(int phase, int ncore, uint64_t &t) {
         if (i == main_core)
             continue;
         mthread_create(&tid[i], i, base_worker, this);
+        cpu_set_t cset;
+        CPU_ZERO(&cset);
+        for (uint32_t j = 6; j < 12; ++j)
+            CPU_SET(j, &cset);
+        for (uint32_t j = 18; j < 24; ++j)
+            CPU_SET(j, &cset);
+        pthread_setaffinity_np(tid[i], sizeof(cpu_set_t), &cset);
     }
     mthread_create(&tid[main_core], main_core, base_worker, this);
+    cpu_set_t cset;
+    CPU_ZERO(&cset);
+    for (uint32_t i = 0; i < 6; ++i)
+        CPU_SET(i, &cset);
+    for (uint32_t i = 12; i < 18; ++i)
+        CPU_SET(i, &cset);
+    pthread_setaffinity_np(tid[main_core], sizeof(cpu_set_t), &cset);
     for (int i = 0; i < ncore; ++i) {
         if (i == main_core)
             continue;
@@ -159,6 +182,7 @@ int mapreduce_appbase::sched_run() {
     run_phase(MAP, ncore_, map_time);
     // finalize phase
 //    run_phase(FINALIZE, ncore_, finalize_time);
+//    ma_.clear();
     set_final_result();
     total_map_time_ += map_time;
     total_finalize_time_ += finalize_time;

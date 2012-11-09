@@ -20,40 +20,19 @@
 #include <ctype.h>
 #include "mr-types.hh"
 
-struct mmap_file {
-    mmap_file(const char *f) {
+struct defsplitter {
+    defsplitter(char *d, size_t size, size_t nsplit)
+        : d_(d), size_(size), nsplit_(nsplit), pos_(0) {
+    }
+    defsplitter(const char *f, size_t nsplit) :
+            fd_(-1), nsplit_(nsplit), pos_(0) {
         assert((fd_ = open(f, O_RDONLY)) >= 0);
         struct stat fst;
         assert(fstat(fd_, &fst) == 0);
         size_ = fst.st_size;
-        d_ = (char *)mmap(0, size_ + 1, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd_, 0);
-        assert(d_);
     }
-    mmap_file() : fd_(-1) {}
-    virtual ~mmap_file() {
-        if (fd_ >= 0) {
-            assert(munmap(d_, size_ + 1) == 0);
-            assert(close(fd_) == 0);
-        }
-    }
-    char &operator[](int i) {
-        return d_[i];
-    }
-    size_t size_;
-    char *d_;
-  private:
-    int fd_;
-};
-
-struct defsplitter {
-    defsplitter(char *d, size_t size, size_t nsplit)
-        : d_(d), size_(size), nsplit_(nsplit), pos_(0) {
-        pthread_mutex_init(&mu_, 0);
-    }
-    defsplitter(const char *f, size_t nsplit) : nsplit_(nsplit), pos_(0), mf_(f) {
-        pthread_mutex_init(&mu_, 0);
-        size_ = mf_.size_;
-        d_ = mf_.d_;
+    ~defsplitter() {
+        assert(close(fd_) == 0);
     }
     int prefault() {
         int sum = 0;
@@ -61,6 +40,7 @@ struct defsplitter {
             sum += d_[i];
         return sum;
     }
+    void* mmap_split(size_t offset, size_t length);
     bool split(split_t *ma, int ncore, const char *stop, size_t align = 0);
     void trim(size_t sz) {
         assert(sz <= size_);
@@ -71,40 +51,53 @@ struct defsplitter {
     }
 
   private:
+    int fd_;
     char *d_;
     size_t size_;
-    size_t nsplit_;
+    int nsplit_;
     size_t pos_;
-    mmap_file mf_;
-    pthread_mutex_t mu_;
 };
 
+void* defsplitter::mmap_split(size_t offset, size_t length) {
+    assert(fd_ > 0);
+    void* d = mmap(0, length, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd_, offset);
+    assert(d_);
+    return d;
+}
+
 bool defsplitter::split(split_t *ma, int ncores, const char *stop, size_t align) {
-    pthread_mutex_lock(&mu_);
-    if (pos_ >= size_) {
-        pthread_mutex_unlock(&mu_);
-        return false;
+    int max = size_ >> 12; // divide by 4096
+    if (nsplit_ > max) {
+        nsplit_ = max;
     }
     if (nsplit_ == 0)
-        nsplit_ = ncores * def_nsplits_per_core;
+        nsplit_ = std::min(max, ncores * def_nsplits_per_core);
+    if (pos_ >= size_)
+        return false;
+    size_t length = std::min(size_ - pos_, size_ / nsplit_);
+    if (length < size_ - pos_)
+        length = round_up(length, 4096); 
+    ma->data = mmap_split(pos_, length);
+    ma->length = length;
+    pos_ += length;
 
-    ma->data = (void *) &d_[pos_];
-    ma->length = std::min(size_ - pos_, size_ / nsplit_);
+/*
     if (align) {
         ma->length = round_down(ma->length, align);
         assert(ma->length);
     }
-    pos_ += ma->length;
-    for (; pos_ < size_ && stop && !strchr(stop, d_[pos_]); ++pos_, ++ma->length);
-        
-    pthread_mutex_unlock(&mu_);
+*/
     return true;
 }
 
 struct split_word {
-    split_word(split_t *ma) : ma_(ma), pos_(0) {
+    split_word(split_t *ma) : ma_(ma), len_(0), end_address_(NULL),
+            bytewise_(false) {
         assert(ma_ && ma_->data);
+        str_ = (char*)ma_->data;
+        end_address_ = (char*)ma_->data + ma_->length;
     }
+/*
     char *fill(char *k, size_t maxlen, size_t &klen) {
         char *d = (char *)ma_->data;
         klen = 0;
@@ -113,18 +106,57 @@ struct split_word {
             return NULL;
         char *index = &d[pos_];
         for (; pos_ < ma_->length && letter(d[pos_]); ++pos_) {
-            k[klen++] = toupper(d[pos_]);
-            assert(klen < maxlen);
+//            k[klen++] = toupper(d[pos_]);
+            k[klen++] = d[pos_];
+//            assert(klen < maxlen);
         }
         k[klen] = 0;
         return index;
     }
+*/
+    bool fill(char *k, size_t maxlen, size_t &klen) {
+        char* spl;
+        if (len_ >= ma_->length)
+            return false;
+
+        if (bytewise_) {
+            char *d = (char *)ma_->data;
+            klen = 0;
+            for (; len_ < ma_->length && !letter(d[len_]); ++len_);
+            if (len_ == ma_->length)
+                return false;
+            for (; len_ < ma_->length && letter(d[len_]); ++len_) {
+                k[klen++] = d[len_];
+            }
+            k[klen] = 0;
+            return true;
+        }
+
+        // split token
+        spl = strtok_r(str_, " \n\r\0", &saveptr1);
+        if (spl == NULL)
+            return false;
+        int l = strlen(k);
+        strncpy(k, spl, l);
+        klen = l;
+        str_ = NULL;
+        if (spl + maxlen > end_address_) {
+            bytewise_ = true;
+            len_ = (spl - (char*)ma_->data) + klen;
+        }
+        return true;
+    }
   private:
     bool letter(char c) {
-        return toupper(c) >= 'A' && toupper(c) <= 'Z';
+//        return toupper(c) >= 'A' && toupper(c) <= 'Z';
+        return c >= 'a' && c <= 'z';
     }
-    split_t *ma_;
-    size_t pos_;
+    split_t* ma_;
+    char* str_;
+    char* saveptr1;
+    size_t len_;
+    char* end_address_;
+    bool bytewise_;
 };
 
 #endif

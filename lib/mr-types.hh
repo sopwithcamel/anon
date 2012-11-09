@@ -15,6 +15,7 @@
 #ifndef MR_TYPES_HH_
 #define MR_TYPES_HH_
 
+#include <sys/mman.h>
 #include <stdlib.h>
 #include <inttypes.h>
 #include <assert.h>
