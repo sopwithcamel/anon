@@ -133,10 +133,10 @@ struct split_word {
         }
 
         // split token
-        spl = strtok_r(str_, " \n\r\0", &saveptr1);
+        spl = strtok_r(str_, " \t\n\r\0", &saveptr1);
         if (spl == NULL)
             return false;
-        int l = strlen(k);
+        int l = strlen(spl);
         strncpy(k, spl, l);
         klen = l;
         str_ = NULL;

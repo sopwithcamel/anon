@@ -68,7 +68,7 @@ struct wc : public mapreduce_appbase {
         char k[1024];
         size_t klen;
         split_word sw(ma);
-        while (sw.fill(k, sizeof(k), klen))
+        while (sw.fill(k, 1024, klen))
             map_emit(k, (void *)1, klen);
     }
 
