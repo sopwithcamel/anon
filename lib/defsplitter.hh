@@ -31,10 +31,13 @@ struct defsplitter {
         assert(f_);
         fseek(f_, 0, SEEK_END);
         size_ = ftell(f_);
-        fseek(f_, 0, SEEK_SET);
+        rewind(f_);
+
+        pthread_mutex_init(&flock_, NULL);
     }
     ~defsplitter() {
         fclose(f_);
+        pthread_mutex_destroy(&flock_);
     }
     int prefault() {
         int sum = 0;
@@ -42,29 +45,39 @@ struct defsplitter {
             sum += d_[i];
         return sum;
     }
-    void* get_split(size_t offset, size_t length);
+    bool get_split_chunk(split_t* ma);
     bool split(split_t *ma, int ncore, const char *stop, size_t align = 0);
-    void trim(size_t sz) {
-        assert(sz <= size_);
-        size_ = sz;
-    }
     size_t size() const {
         return size_;
     }
 
   private:
     FILE* f_;
+    pthread_mutex_t flock_;
     char *d_;
     size_t size_;
     int nsplit_;
     size_t pos_;
 };
 
-void* defsplitter::get_split(size_t offset, size_t length) {
-    void* d = (char*)malloc(length);
-    size_t ret = fread(d, sizeof(char), length, f_);
-    assert(ret == length);
-    return d;
+bool defsplitter::get_split_chunk(split_t* ma) {
+    if (ma->chunk_end_offset >= ma->split_end_offset)
+        return false;
+    pthread_mutex_lock(&flock_);
+    // seek to end of current chunk
+    fseek(f_, ma->chunk_end_offset, SEEK_SET);
+    // read in buffer
+    size_t read_length = std::min(ma->kBufferSize,
+            ma->split_end_offset - ma->chunk_end_offset);
+    size_t ret = fread(ma->data, sizeof(char), read_length, f_);
+    pthread_mutex_unlock(&flock_);
+    if (ret != read_length) {
+        perror("fread");
+        assert(false);
+    }
+    ma->chunk_start_offset = ma->chunk_end_offset;
+    ma->chunk_end_offset += read_length;
+    return true;
 }
 
 bool defsplitter::split(split_t *ma, int ncores, const char *stop, size_t align) {
@@ -79,53 +92,36 @@ bool defsplitter::split(split_t *ma, int ncores, const char *stop, size_t align)
     size_t length = std::min(size_ - pos_, size_ / nsplit_);
     if (length < size_ - pos_)
         length = round_up(length, 4096); 
-    ma->data = get_split(pos_, length);
-    ma->length = length;
+    
+    ma->split_start_offset = ma->chunk_start_offset = ma->chunk_end_offset = pos_;
+    ma->split_end_offset = pos_ + length;
+
+    get_split_chunk(ma);
     pos_ += length;
-/*
-    if (align) {
-        ma->length = round_down(ma->length, align);
-        assert(ma->length);
-    }
-*/
     return true;
 }
 
 struct split_word {
-    split_word(split_t *ma) : ma_(ma), len_(0), end_address_(NULL),
+    split_word(split_t *ma) :
+            ma_(ma), len_(0),
             bytewise_(false) {
         assert(ma_ && ma_->data);
-        str_ = (char*)ma_->data;
-        end_address_ = (char*)ma_->data + ma_->length;
+        str_ = ma_->data;
     }
-/*
-    bool fill(char *k, size_t maxlen, size_t &klen) {
-        char *d = (char *)ma_->data;
-        klen = 0;
-        for (; len_ < ma_->length && !letter(d[len_]); ++len_);
-        if (len_ == ma_->length)
-            return false;
-        for (; len_ < ma_->length && letter(d[len_]); ++len_) {
-//            k[klen++] = toupper(d[pos_]);
-            k[klen++] = d[len_];
-//            assert(klen < maxlen);
-        }
-        k[klen] = 0;
-        return true;
-    }
-*/
+
     bool fill(char *k, size_t maxlen, size_t &klen) {
         char* spl;
-        if (len_ >= ma_->length)
-            return false;
+        size_t chunk_length = ma_->chunk_end_offset -
+            ma_->chunk_start_offset;
 
         if (bytewise_) {
-            char *d = (char *)ma_->data;
+            char *d = ma_->data;
             klen = 0;
-            for (; len_ < ma_->length && !letter(d[len_]); ++len_);
-            if (len_ == ma_->length)
+            for (; len_ < chunk_length && !letter(d[len_]); ++len_);
+            if (len_ == chunk_length) {
                 return false;
-            for (; len_ < ma_->length && letter(d[len_]); ++len_) {
+            }
+            for (; len_ < chunk_length && letter(d[len_]); ++len_) {
                 k[klen++] = d[len_];
             }
             k[klen] = 0;
@@ -140,23 +136,22 @@ struct split_word {
         strncpy(k, spl, l);
         klen = l;
         str_ = NULL;
-        if (spl + maxlen > end_address_) {
+        if (spl + maxlen > ma_->data + chunk_length) {
             bytewise_ = true;
-            len_ = (spl - (char*)ma_->data) + klen;
+            len_ = (spl - ma_->data) + klen;
         }
         return true;
     }
 
   private:
     bool letter(char c) {
-//        return toupper(c) >= 'A' && toupper(c) <= 'Z';
         return c >= 'a' && c <= 'z';
     }
+
     split_t* ma_;
     char* str_;
     char* saveptr1;
     size_t len_;
-    char* end_address_;
     bool bytewise_;
 };
 

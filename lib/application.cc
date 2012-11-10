@@ -152,11 +152,14 @@ int mapreduce_appbase::sched_run() {
 
     // pre-split
     ma_.clear();
-    split_t ma;
-    bzero(&ma, sizeof(ma));
-    while (split(&ma, ncore_)) {
-        ma_.push_back(ma);
-        bzero(&ma, sizeof(ma));
+    while (true) {
+        split_t* ma = new split_t();
+        if (split(ma, ncore_))
+            ma_.push_back(*ma);
+        else {
+            delete ma;
+            break;
+        }
     }
 
     m_ = create_map_cbt_manager();

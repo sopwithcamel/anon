@@ -23,8 +23,14 @@
 #include "array.hh"
 
 struct split_t {
-    void *data;
-    size_t length;
+    split_t();
+    ~split_t();
+    static size_t kBufferSize;
+    char* data;
+    size_t split_start_offset;
+    size_t split_end_offset;
+    size_t chunk_start_offset;
+    size_t chunk_end_offset;
 };
 
 enum task_type_t {
