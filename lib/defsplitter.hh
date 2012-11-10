@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <ctype.h>
 #include "mr-types.hh"
+#include <asm/mman.h>
 
 struct defsplitter {
     defsplitter(char *d, size_t size, size_t nsplit)
@@ -61,7 +62,10 @@ struct defsplitter {
 void* defsplitter::mmap_split(size_t offset, size_t length) {
     assert(fd_ > 0);
     void* d = mmap(0, length, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd_, offset);
-    assert(d_);
+    if (d == MAP_FAILED) {
+        perror("mmap");
+        assert(false);
+    }
     return d;
 }
 
@@ -98,20 +102,19 @@ struct split_word {
         end_address_ = (char*)ma_->data + ma_->length;
     }
 /*
-    char *fill(char *k, size_t maxlen, size_t &klen) {
+    bool fill(char *k, size_t maxlen, size_t &klen) {
         char *d = (char *)ma_->data;
         klen = 0;
-        for (; pos_ < ma_->length && !letter(d[pos_]); ++pos_);
-        if (pos_ == ma_->length)
-            return NULL;
-        char *index = &d[pos_];
-        for (; pos_ < ma_->length && letter(d[pos_]); ++pos_) {
+        for (; len_ < ma_->length && !letter(d[len_]); ++len_);
+        if (len_ == ma_->length)
+            return false;
+        for (; len_ < ma_->length && letter(d[len_]); ++len_) {
 //            k[klen++] = toupper(d[pos_]);
-            k[klen++] = d[pos_];
+            k[klen++] = d[len_];
 //            assert(klen < maxlen);
         }
         k[klen] = 0;
-        return index;
+        return true;
     }
 */
     bool fill(char *k, size_t maxlen, size_t &klen) {
@@ -146,6 +149,7 @@ struct split_word {
         }
         return true;
     }
+
   private:
     bool letter(char c) {
 //        return toupper(c) >= 'A' && toupper(c) <= 'Z';
