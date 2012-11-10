@@ -67,7 +67,7 @@ void *mthread_exit(void *) {
 void *mthread_entry(void *args) {
     threadinfo *ti = threadinfo::current();
     ti->cur_core_ = ptr2int<int>(args);
-//    assert(affinity_set(cpumap_physical_cpuid(ti->cur_core_ * 2)) == 0);
+    assert(affinity_set(cpumap_physical_cpuid(ti->cur_core_)) == 0);
     while (true)
         tp_[ti->cur_core_].run_next_task();
 }
@@ -99,7 +99,7 @@ void mthread_init(int ncore) {
     cpumap_init();
     ncore_ = ncore;
     ti->cur_core_ = main_core;
-//    assert(affinity_set(cpumap_physical_cpuid(main_core)) == 0);
+    assert(affinity_set(cpumap_physical_cpuid(main_core)) == 0);
     tp_created_ = true;
     bzero(tp_, sizeof(tp_));
     for (int i = 0; i < ncore_; ++i)

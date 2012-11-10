@@ -239,7 +239,7 @@ void* map_cbt_manager::worker(void *x) {
             pthread_mutex_unlock(&m->cbt_queue_mutex_[treeid]);
 
             // perform insertion
-            m->cbt_[treeid]->bulk_insert(buf->list(), buf->index());
+//            m->cbt_[treeid]->bulk_insert(buf->list(), buf->index());
 
             // return buffer to pool
             m->bufpool_->return_buffer(buf);

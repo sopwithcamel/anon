@@ -26,14 +26,15 @@ struct defsplitter {
         : d_(d), size_(size), nsplit_(nsplit), pos_(0) {
     }
     defsplitter(const char *f, size_t nsplit) :
-            fd_(-1), nsplit_(nsplit), pos_(0) {
-        assert((fd_ = open(f, O_RDONLY)) >= 0);
-        struct stat fst;
-        assert(fstat(fd_, &fst) == 0);
-        size_ = fst.st_size;
+            f_(NULL), nsplit_(nsplit), pos_(0) {
+        f_ = fopen(f, "r");
+        assert(f_);
+        fseek(f_, 0, SEEK_END);
+        size_ = ftell(f_);
+        fseek(f_, 0, SEEK_SET);
     }
     ~defsplitter() {
-        assert(close(fd_) == 0);
+        fclose(f_);
     }
     int prefault() {
         int sum = 0;
@@ -41,7 +42,7 @@ struct defsplitter {
             sum += d_[i];
         return sum;
     }
-    void* mmap_split(size_t offset, size_t length);
+    void* get_split(size_t offset, size_t length);
     bool split(split_t *ma, int ncore, const char *stop, size_t align = 0);
     void trim(size_t sz) {
         assert(sz <= size_);
@@ -52,20 +53,17 @@ struct defsplitter {
     }
 
   private:
-    int fd_;
+    FILE* f_;
     char *d_;
     size_t size_;
     int nsplit_;
     size_t pos_;
 };
 
-void* defsplitter::mmap_split(size_t offset, size_t length) {
-    assert(fd_ > 0);
-    void* d = mmap(0, length, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd_, offset);
-    if (d == MAP_FAILED) {
-        perror("mmap");
-        assert(false);
-    }
+void* defsplitter::get_split(size_t offset, size_t length) {
+    void* d = (char*)malloc(length);
+    size_t ret = fread(d, sizeof(char), length, f_);
+    assert(ret == length);
     return d;
 }
 
@@ -81,10 +79,9 @@ bool defsplitter::split(split_t *ma, int ncores, const char *stop, size_t align)
     size_t length = std::min(size_ - pos_, size_ / nsplit_);
     if (length < size_ - pos_)
         length = round_up(length, 4096); 
-    ma->data = mmap_split(pos_, length);
+    ma->data = get_split(pos_, length);
     ma->length = length;
     pos_ += length;
-
 /*
     if (align) {
         ma->length = round_down(ma->length, align);
