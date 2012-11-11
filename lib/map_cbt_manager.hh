@@ -68,7 +68,6 @@ struct map_cbt_manager : public map_cbt_manager_base {
         return x * log(2)/log(26);
     }
 
-
   private:
     const uint32_t kInsertAtOnce;
 
@@ -154,12 +153,17 @@ void map_cbt_manager::init(const std::string& libname, uint32_t ncore,
     }
 
     // set all cpus in cpu mask
+    cpu_set_t cset;
+    CPU_ZERO(&cset);
+    for (uint32_t i = ncore_; i < JOS_NCPU; ++i)
+        CPU_SET(i, &cset);
     for (uint32_t j = 0; j < ntree_; ++j) {
         args_struct* a = new args_struct(2);
         a->argv[0] = (void*)this;
         a->argv[1] = (void*)((intptr_t)j);
         args.push_back(a);
         pthread_create(&tid_[j], NULL, worker, a);
+        pthread_setaffinity_np(tid_[j], sizeof(cpu_set_t), &cset);
     }
 }
 
@@ -239,7 +243,7 @@ void* map_cbt_manager::worker(void *x) {
             pthread_mutex_unlock(&m->cbt_queue_mutex_[treeid]);
 
             // perform insertion
-//            m->cbt_[treeid]->bulk_insert(buf->list(), buf->index());
+            m->cbt_[treeid]->bulk_insert(buf->list(), buf->index());
 
             // return buffer to pool
             m->bufpool_->return_buffer(buf);
