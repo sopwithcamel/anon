@@ -73,9 +73,15 @@ struct wc : public mapreduce_appbase {
                 map_emit(k, (void *)1, klen);
         } while (s_.get_split_chunk(ma));
     }
+    bool result_compare(const char* k1, const void* v1, 
+            const char* k2, const void* v2) {
+        if ((intptr_t)v1 > (intptr_t)v2)
+            return true;
+        return false;
+    }
 
     void print_results_header() {
-        printf("\nwordcount: results");
+        printf("\nwordcount: results\n");
     }
 
     void print_record(FILE* f, const char* key, void* v) {

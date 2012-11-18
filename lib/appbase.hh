@@ -21,15 +21,35 @@
 #include "PartialAgg.h"
 
 struct mapreduce_appbase;
-struct map_cbt_manager_base;
+struct map_cbt_manager;
 
 struct static_appbase;
 
 struct mapreduce_appbase {
+    struct ResultComparator {
+        explicit ResultComparator(const Operations* o, mapreduce_appbase* a,
+                bool rev = false) :
+                reverse(rev), ops(o), app(a) {}
+        bool operator()(PartialAgg*& lhs,
+                PartialAgg*& rhs) {
+            bool ret =  app->result_compare(ops->getKey(lhs),
+                    ops->getValue(lhs),
+                    ops->getKey(rhs), ops->getValue(rhs));
+            if (reverse)
+                return !ret;
+            return ret;
+        }
+        bool reverse;
+        const Operations* ops;
+        mapreduce_appbase* app;
+    };
+
     mapreduce_appbase();
     virtual void map_function(split_t *) = 0;
     virtual bool split(split_t *ret, int ncore) = 0;
     virtual ~mapreduce_appbase();
+    virtual bool result_compare(const char* k1, const void* v1, 
+            const char* k2, const void* v2) = 0;
 
     /* @brief: default partition function that partition keys into reduce/group
      * buckets */
@@ -63,6 +83,7 @@ struct mapreduce_appbase {
         used, Metis calls the keycopy function for each new key, and user
         can free the key when this function returns. */
     void map_emit(void *key, void *val, int key_length);
+    void sort(uint32_t uleft, uint32_t uright);
 
     /* internal use only */
   protected:
@@ -73,7 +94,7 @@ struct mapreduce_appbase {
     // launcher function for worker threads
     static void *base_worker(void *arg);
     void run_phase(int phase, int ncore, uint64_t &t);
-    map_cbt_manager_base* create_map_cbt_manager();
+    map_cbt_manager* create_map_cbt_manager();
 
     virtual void print_record(FILE* f, const char* key, void* v);
     void set_final_result();
@@ -95,8 +116,7 @@ struct mapreduce_appbase {
     int next_task_;
     int phase_;
     xarray<split_t> ma_;
-    map_cbt_manager_base *m_;
-    xarray<PartialAgg*> results_;
+    map_cbt_manager *m_;
 };
 
 #endif

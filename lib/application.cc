@@ -59,8 +59,8 @@ void mapreduce_appbase::deinitialize() {
     mthread_finalize();
 }
 
-map_cbt_manager_base *mapreduce_appbase::create_map_cbt_manager() {
-    map_cbt_manager_base *m = new map_cbt_manager();
+map_cbt_manager *mapreduce_appbase::create_map_cbt_manager() {
+    map_cbt_manager *m = new map_cbt_manager();
     m->init(library_name_, ncore_, ntree_);
     return m;
 };
@@ -72,13 +72,17 @@ int mapreduce_appbase::map_worker() {
     CPU_SET(threadinfo::current()->cur_core_, &cset);
     pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cset);
     pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &cset);
+    sem_wait(&m_->phase_semaphore_);
+/*
     for (uint32_t i = 0; i < JOS_NCPU; ++i)
         if (CPU_ISSET(i, &cset))
             fprintf(stderr, "%d: CPU %d\n", pthread_self(), i);
+*/
     for (n = 0; (next = next_task()) < int(ma_.size()); ++n) {
         map_function(ma_.at(next));
     }
-    m_->map_finish();
+    m_->flush_buffered_paos();
+    sem_post(&m_->phase_semaphore_);
     return n;
 }
 
@@ -169,8 +173,9 @@ int mapreduce_appbase::sched_run() {
     uint64_t finalize_time = 0;
     // map phase
     run_phase(MAP, ncore_, map_time);
+    m_->finish_map();
     // finalize phase
-//    run_phase(FINALIZE, ncore_, finalize_time);
+    run_phase(FINALIZE, ncore_, finalize_time);
 //    ma_.clear();
     set_final_result();
     total_map_time_ += map_time;
@@ -216,32 +221,134 @@ void mapreduce_appbase::print_results_header() {
     printf("Default results header\n");
 }
 
-void mapreduce_appbase::print_top(size_t ndisp) {
-#ifdef HADOOP
-    ndisp = results_->size();
-#else
-    ndisp = std::min(ndisp, results_.size());
-#endif
-    const Operations* ops = m_->ops();
-    for (size_t i = 0; i < ndisp; i++) {
-        PartialAgg **p = results_.at(i);
-        print_record(stdout, ops->getKey(*p), ops->getValue(*p));
+void mapreduce_appbase::sort(uint32_t uleft, uint32_t uright) {
+    int32_t i, j, stack_pointer = -1;
+    int32_t left = uleft;
+    int32_t right = uright;
+    int32_t* rstack = new int32_t[128];
+    PartialAgg *swap, *temp;
+    PartialAgg** arr = &m_->results_[0];
+
+    ResultComparator sorter(m_->ops(), this);
+
+    while (true) {
+        if (right - left <= 7) {
+            for (j = left + 1; j <= right; j++) {
+                swap = arr[j];
+                i = j - 1;
+                if (i < 0) {
+                    fprintf(stderr, "Noo");
+                    assert(false);
+                }
+                while (i >= left && sorter(swap, arr[i])) {
+                    arr[i + 1] = arr[i];
+                    i--;
+                }
+                arr[i + 1] = swap;
+            }
+            if (stack_pointer == -1) {
+                break;
+            }
+            right = rstack[stack_pointer--];
+            left = rstack[stack_pointer--];
+        } else {
+            int median = (left + right) >> 1;
+            i = left + 1;
+            j = right;
+
+            swap = arr[median];
+            arr[median] = arr[i];
+            arr[i] = swap;
+
+            if (sorter(arr[right], arr[left])) {
+                swap = arr[left];
+                arr[left] = arr[right];
+                arr[right] = swap;
+            }
+            if (sorter(arr[right], arr[i])) {
+                swap = arr[i];
+                arr[i] = arr[right];
+                arr[right] = swap;
+            }
+            if (sorter(arr[i], arr[left])) {
+                swap = arr[left];
+                arr[left] = arr[i];
+                arr[i] = swap;
+            }
+            temp = arr[i];
+            while (true) {
+                while (sorter(arr[++i], temp));
+                while (sorter(temp, arr[--j]));
+                if (j < i) {
+                    break;
+                }
+                swap = arr[i];
+                arr[i] = arr[j];
+                arr[j] = swap;
+            }
+            arr[left + 1] = arr[j];
+            arr[j] = temp;
+            if (right - i + 1 >= j - left) {
+                rstack[++stack_pointer] = i;
+                rstack[++stack_pointer] = right;
+                right = j - 1;
+            } else {
+                rstack[++stack_pointer] = left;
+                rstack[++stack_pointer] = j - 1;
+                left = i;
+            }
+        }
     }
+    delete[] rstack;
+}
+
+void mapreduce_appbase::print_top(size_t ndisp) {
+    ndisp = std::min(ndisp, m_->results_.size());
+    const Operations* ops = m_->ops();
+    typedef std::priority_queue<PartialAgg*, std::vector<PartialAgg*>,
+            ResultComparator> heap_t;    
+    ResultComparator rev_comparator(m_->ops(), this, /*reverse = */true);
+    ResultComparator comparator(m_->ops(), this);
+    heap_t h(comparator);
+    
+    for (size_t i = 0; i < ndisp; ++i) {
+        PartialAgg *p = m_->results_[i];
+        h.push(p);
+    }
+    for (size_t i = ndisp; i < m_->results_.size(); i++) {
+        PartialAgg *p = m_->results_[i];
+        if (rev_comparator(const_cast<PartialAgg*&>(h.top()), p)) {
+            h.pop();
+            h.push(p);
+        }
+    }
+    std::vector<PartialAgg*> top_ndisp;
+    for (size_t i = 0; i < ndisp; ++i) {
+        PartialAgg *p = h.top();
+        top_ndisp.push_back(p);
+        h.pop();
+    }
+    for (size_t i = 0; i < ndisp; ++i) {
+        PartialAgg *p = top_ndisp[ndisp - i - 1];
+        print_record(stdout, ops->getKey(p), ops->getValue(p));
+    }
+    top_ndisp.clear();
 }
 
 void mapreduce_appbase::output_all(FILE *fout) {
     const Operations* ops = m_->ops();
-    for (uint32_t i = 0; i < results_.size(); i++) {
-        PartialAgg **p = results_.at(i);
-        print_record(fout, ops->getKey(*p), ops->getValue(*p));
+    sort(0, m_->results_.size() - 1);
+    for (uint32_t i = 0; i < m_->results_.size(); i++) {
+        PartialAgg *p = m_->results_[i];
+        print_record(fout, ops->getKey(p), ops->getValue(p));
     }
 }
 void mapreduce_appbase::free_results() {
     const Operations* ops = m_->ops();
-    for (size_t i = 0; i < results_.size(); ++i) {
-        ops->destroyPAO(results_[i]);
+    for (size_t i = 0; i < m_->results_.size(); ++i) {
+        ops->destroyPAO(m_->results_[i]);
     }
-    results_.shallow_free();
+    m_->results_.clear();
 }
 
 void mapreduce_appbase::set_final_result() {

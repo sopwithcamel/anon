@@ -19,16 +19,6 @@
 
 using namespace google::protobuf::io;
 
-struct map_cbt_manager_base {
-    virtual ~map_cbt_manager_base() {}
-    virtual void init(const std::string& libname, uint32_t ncore,
-            uint32_t ntree) = 0;
-    virtual bool emit(void *key, void *val, size_t keylen, unsigned hash) = 0;
-    virtual void map_finish() {}
-    virtual void finalize() = 0;
-    virtual const Operations* ops() const = 0;
-};
-
 struct args_struct {
   public:
     explicit args_struct(uint32_t c) {
@@ -43,18 +33,23 @@ struct args_struct {
 };
 
 /* @brief: A map manager using the CBT as the internal data structure */
-struct map_cbt_manager : public map_cbt_manager_base {
+struct map_cbt_manager {
     map_cbt_manager();
     ~map_cbt_manager();
     void init(const std::string& libname, uint32_t ncore,
             uint32_t ntree);
     bool emit(void *key, void *val, size_t keylen, unsigned hash);
-    void map_finish();
+    void flush_buffered_paos();
+    void finish_map();
     void finalize();
     const Operations* ops() const {
         assert(ops_);
         return ops_;
     }        
+    sem_t phase_semaphore_;
+
+    // results
+    std::vector<PartialAgg*> results_;
   private:
     bool link_user_map(const std::string& libname);
     static void *worker(void *arg);
@@ -101,6 +96,7 @@ map_cbt_manager::map_cbt_manager() :
 } 
 
 map_cbt_manager::~map_cbt_manager() {
+    sem_destroy(&phase_semaphore_);
     // clean up buffers
     delete[] buffered_paos_;
     delete bufpool_;
@@ -122,6 +118,7 @@ void map_cbt_manager::init(const std::string& libname, uint32_t ncore,
     ncore_ = ncore;
     ntree_ = ntree;
 
+    sem_init(&phase_semaphore_, 0, ncore_);
     // create CBTs
     cbt_ = new cbt::CompressTree*[ntree_];
     cbt_queue_mutex_ = new pthread_mutex_t[ntree_];
@@ -181,6 +178,7 @@ bool map_cbt_manager::emit(void *k, void *v, size_t keylen, unsigned hash) {
     PAOArray* buf = buffered_paos_[bufid];
     uint32_t ind = buf->index();
     ops()->setKey(buf->list()[ind], (char*)k);
+    ops()->setValue(buf->list()[ind], (void*)(intptr_t)1);
     buf->set_index(ind + 1);
 
     if (buf->index() == kInsertAtOnce) {
@@ -192,12 +190,18 @@ bool map_cbt_manager::emit(void *k, void *v, size_t keylen, unsigned hash) {
     return true;
 }
 
-void map_cbt_manager::map_finish() {
+void map_cbt_manager::flush_buffered_paos() {
     uint32_t coreid = threadinfo::current()->cur_core_;
     for (uint32_t treeid = 0; treeid < ntree_; ++treeid) {
         uint32_t bufid = coreid * ntree_ + treeid;
         PAOArray* buf = buffered_paos_[bufid];
         submit_array(treeid, buf);
+    }
+}
+
+void map_cbt_manager::finish_map() {
+    for (uint32_t treeid = 0; treeid < ntree_; ++treeid) {
+        pthread_join(tid_[treeid], NULL);
     }
 }
 
@@ -248,6 +252,11 @@ void* map_cbt_manager::worker(void *x) {
             // return buffer to pool
             m->bufpool_->return_buffer(buf);
         }
+
+        int ret;
+        sem_getvalue(&m->phase_semaphore_, &ret);
+        if (ret == (int)m->ncore_)
+            break;
     }
     return 0;
 }
@@ -319,12 +328,15 @@ void map_cbt_manager::finalize() {
     uint64_t num_read;
 
     bool remain = true;
+
     do {
         pthread_mutex_lock(&cbt_queue_mutex_[treeid]);
         remain = cbt_[treeid]->bulk_read(buf->list(), num_read, kInsertAtOnce);
         pthread_mutex_unlock(&cbt_queue_mutex_[treeid]);
         // copy results
+        results_.insert(results_.end(), &buf->list()[0], &buf->list()[num_read]);
     } while (remain);
+    fprintf(stderr, "Results has %ld elements\n", results_.size());
 }
 
 #endif
