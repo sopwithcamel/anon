@@ -40,7 +40,7 @@ struct map_cbt_manager {
             uint32_t ntree);
     bool emit(void *key, void *val, size_t keylen, unsigned hash);
     void flush_buffered_paos();
-    void finish_map();
+    void finish_phase(int phase);
     void finalize();
     const Operations* ops() const {
         assert(ops_);
@@ -50,6 +50,7 @@ struct map_cbt_manager {
 
     // results
     std::vector<PartialAgg*> results_;
+    pthread_mutex_t results_mutex_;
   private:
     bool link_user_map(const std::string& libname);
     static void *worker(void *arg);
@@ -162,6 +163,9 @@ void map_cbt_manager::init(const std::string& libname, uint32_t ncore,
         pthread_create(&tid_[j], NULL, worker, a);
         pthread_setaffinity_np(tid_[j], sizeof(cpu_set_t), &cset);
     }
+
+    // results mutex
+    pthread_mutex_init(&results_mutex_, NULL);
 }
 
 void map_cbt_manager::submit_array(uint32_t treeid, PAOArray* buf) {
@@ -199,9 +203,17 @@ void map_cbt_manager::flush_buffered_paos() {
     }
 }
 
-void map_cbt_manager::finish_map() {
-    for (uint32_t treeid = 0; treeid < ntree_; ++treeid) {
-        pthread_join(tid_[treeid], NULL);
+void map_cbt_manager::finish_phase(int phase) {
+    switch (phase) {
+        case MAP:
+            for (uint32_t treeid = 0; treeid < ntree_; ++treeid) {
+                pthread_join(tid_[treeid], NULL);
+            }
+            break;
+        case FINALIZE:
+            break;
+        default:
+            assert(0);
     }
 }
 
@@ -327,16 +339,28 @@ void map_cbt_manager::finalize() {
     PAOArray* buf = buffered_paos_[coreid];
     uint64_t num_read;
 
-    bool remain = true;
+    bool* remain = new bool[ntree_];
+    for (uint32_t i = 0; i < ntree_; ++i)
+        remain[i] = true;
 
+    bool any_remain;
     do {
-        pthread_mutex_lock(&cbt_queue_mutex_[treeid]);
-        remain = cbt_[treeid]->bulk_read(buf->list(), num_read, kInsertAtOnce);
-        pthread_mutex_unlock(&cbt_queue_mutex_[treeid]);
-        // copy results
-        results_.insert(results_.end(), &buf->list()[0], &buf->list()[num_read]);
-    } while (remain);
-    fprintf(stderr, "Results has %ld elements\n", results_.size());
+        if (remain[treeid]) {
+            pthread_mutex_lock(&cbt_queue_mutex_[treeid]);
+            remain[treeid] = cbt_[treeid]->bulk_read(buf->list(), num_read,
+                    kInsertAtOnce);
+            pthread_mutex_unlock(&cbt_queue_mutex_[treeid]);
+            // copy results
+            pthread_mutex_lock(&results_mutex_);
+            results_.insert(results_.end(), &buf->list()[0],
+                    &buf->list()[num_read]);
+            pthread_mutex_unlock(&results_mutex_);
+        }
+        any_remain = false;
+        for (uint32_t i = 0; i < ntree_; ++i)
+            any_remain |= remain[i];
+        treeid = (treeid + 1) % ntree_;
+    } while (any_remain);
 }
 
 #endif

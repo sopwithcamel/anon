@@ -173,10 +173,9 @@ int mapreduce_appbase::sched_run() {
     uint64_t finalize_time = 0;
     // map phase
     run_phase(MAP, ncore_, map_time);
-    m_->finish_map();
+    m_->finish_phase(MAP);
     // finalize phase
     run_phase(FINALIZE, ncore_, finalize_time);
-//    ma_.clear();
     set_final_result();
     total_map_time_ += map_time;
     total_finalize_time_ += finalize_time;
@@ -305,9 +304,10 @@ void mapreduce_appbase::sort(uint32_t uleft, uint32_t uright) {
 void mapreduce_appbase::print_top(size_t ndisp) {
     ndisp = std::min(ndisp, m_->results_.size());
     const Operations* ops = m_->ops();
+/*
     typedef std::priority_queue<PartialAgg*, std::vector<PartialAgg*>,
             ResultComparator> heap_t;    
-    ResultComparator rev_comparator(m_->ops(), this, /*reverse = */true);
+    ResultComparator rev_comparator(m_->ops(), this, true);
     ResultComparator comparator(m_->ops(), this);
     heap_t h(comparator);
     
@@ -333,11 +333,15 @@ void mapreduce_appbase::print_top(size_t ndisp) {
         print_record(stdout, ops->getKey(p), ops->getValue(p));
     }
     top_ndisp.clear();
+*/
+    for (uint32_t i = 0; i < ndisp; i++) {
+        PartialAgg *p = m_->results_[i];
+        print_record(stdout, ops->getKey(p), ops->getValue(p));
+    }
 }
 
 void mapreduce_appbase::output_all(FILE *fout) {
     const Operations* ops = m_->ops();
-    sort(0, m_->results_.size() - 1);
     for (uint32_t i = 0; i < m_->results_.size(); i++) {
         PartialAgg *p = m_->results_[i];
         print_record(fout, ops->getKey(p), ops->getValue(p));
@@ -352,5 +356,6 @@ void mapreduce_appbase::free_results() {
 }
 
 void mapreduce_appbase::set_final_result() {
+//    sort(0, m_->results_.size() - 1);
 }
 
