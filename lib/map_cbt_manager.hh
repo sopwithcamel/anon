@@ -334,33 +334,22 @@ void* map_cbt_manager::random_input_worker(void *x) {
 
 void map_cbt_manager::finalize() {
     uint32_t coreid = threadinfo::current()->cur_core_;
-    uint32_t treeid = coreid % ntree_;
+    if (coreid >= ntree_)
+        return;
+    uint32_t treeid = coreid;
 
     PAOArray* buf = buffered_paos_[coreid];
     uint64_t num_read;
-
-    bool* remain = new bool[ntree_];
-    for (uint32_t i = 0; i < ntree_; ++i)
-        remain[i] = true;
-
-    bool any_remain;
+    bool remain;
     do {
-        if (remain[treeid]) {
-            pthread_mutex_lock(&cbt_queue_mutex_[treeid]);
-            remain[treeid] = cbt_[treeid]->bulk_read(buf->list(), num_read,
-                    kInsertAtOnce);
-            pthread_mutex_unlock(&cbt_queue_mutex_[treeid]);
-            // copy results
-            pthread_mutex_lock(&results_mutex_);
-            results_.insert(results_.end(), &buf->list()[0],
-                    &buf->list()[num_read]);
-            pthread_mutex_unlock(&results_mutex_);
-        }
-        any_remain = false;
-        for (uint32_t i = 0; i < ntree_; ++i)
-            any_remain |= remain[i];
-        treeid = (treeid + 1) % ntree_;
-    } while (any_remain);
+        remain = cbt_[treeid]->bulk_read(buf->list(), num_read,
+                kInsertAtOnce);
+        // copy results
+        pthread_mutex_lock(&results_mutex_);
+        results_.insert(results_.end(), &buf->list()[0],
+                &buf->list()[num_read]);
+        pthread_mutex_unlock(&results_mutex_);
+    } while (remain);
 }
 
 #endif

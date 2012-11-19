@@ -356,6 +356,6 @@ void mapreduce_appbase::free_results() {
 }
 
 void mapreduce_appbase::set_final_result() {
-//    sort(0, m_->results_.size() - 1);
+    sort(0, m_->results_.size() - 1);
 }
 
