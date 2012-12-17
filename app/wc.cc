@@ -45,6 +45,7 @@
 #include "wc-datafile.h"
 #include <inc/sysprof.h>
 #endif
+#include "wc_proto.h"
 
 #define DEFAULT_NDISP 10
 
@@ -149,11 +150,11 @@ int main(int argc, char *argv[]) {
     wc app(fn, map_tasks);
     app.set_ncore(nprocs);
     app.set_ntrees(ntrees);
-    app.set_library_name("/usr/local/lib/minni/wc_proto.so");
+    Operations* ops = new WCProtoOperations();
 
-    ProfilerStart("/tmp/anon.perf");
-    app.sched_run();
-    ProfilerStop();
+//    ProfilerStart("/tmp/anon.perf");
+    app.sched_run(ops);
+//    ProfilerStop();
     app.print_stats();
     /* get the number of results to display */
     if (!quiet)
