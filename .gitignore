@@ -10,3 +10,9 @@ autom4te.cache
 data
 *.tar.gz
 cscope.out
+
+# SCons temp files
+*.dblite
+*.os
+*.o
+
