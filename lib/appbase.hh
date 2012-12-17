@@ -51,15 +51,6 @@ struct mapreduce_appbase {
     virtual bool result_compare(const char* k1, const void* v1, 
             const char* k2, const void* v2) = 0;
 
-    /* @brief: default partition function that partition keys into reduce/group
-     * buckets */
-    virtual unsigned partition(void *k, int length) {
-        size_t h = 5381;
-        const char *x = (const char *) k;
-        for (int i = 0; i < length; ++i)
-	    h = ((h << 5) + h) + unsigned(x[i]);
-        return h % unsigned(-1);
-    } 
     /* @brief: set the number of cores to use. We use all cores by default. */
     void set_ncore(int ncore) {
         ncore_ = ncore;

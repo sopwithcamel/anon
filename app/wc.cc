@@ -61,9 +61,6 @@ struct wc : public mapreduce_appbase {
     bool split(split_t *ma, int ncores) {
         return s_.split(ma, ncores, " \t\r\n\0");
     }
-    int key_compare(const void *s1, const void *s2) {
-        return strcmp((const char *) s1, (const char *) s2);
-    }
     void map_function(split_t *ma) {
         char k[1024];
         size_t klen;
@@ -154,9 +151,9 @@ int main(int argc, char *argv[]) {
     app.set_ntrees(ntrees);
     app.set_library_name("/usr/local/lib/minni/wc_proto.so");
 
-//    ProfilerStart("/tmp/anon.perf");
+    ProfilerStart("/tmp/anon.perf");
     app.sched_run();
-//    ProfilerStop();
+    ProfilerStop();
     app.print_stats();
     /* get the number of results to display */
     if (!quiet)
