@@ -64,7 +64,7 @@ struct mapreduce_appbase {
     }
     static void initialize();
     static void deinitialize();
-    int sched_run();
+    int sched_run(Operations* ops);
     void print_stats();
     virtual void print_results_header();
     virtual void print_top(size_t ndisp);
@@ -85,7 +85,7 @@ struct mapreduce_appbase {
     // launcher function for worker threads
     static void *base_worker(void *arg);
     void run_phase(int phase, int ncore, uint64_t &t);
-    map_cbt_manager* create_map_cbt_manager();
+    map_cbt_manager* create_map_cbt_manager(Operations* ops);
 
     virtual void print_record(FILE* f, const char* key, void* v);
     void set_final_result();

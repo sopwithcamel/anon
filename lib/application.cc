@@ -59,9 +59,9 @@ void mapreduce_appbase::deinitialize() {
     mthread_finalize();
 }
 
-map_cbt_manager *mapreduce_appbase::create_map_cbt_manager() {
+map_cbt_manager *mapreduce_appbase::create_map_cbt_manager(Operations* ops) {
     map_cbt_manager *m = new map_cbt_manager();
-    m->init(library_name_, ncore_, ntree_);
+    m->init(ops, ncore_, ntree_);
     return m;
 };
 
@@ -138,7 +138,7 @@ void mapreduce_appbase::run_phase(int phase, int ncore, uint64_t &t) {
     t += read_tsc() - t0;
 }
 
-int mapreduce_appbase::sched_run() {
+int mapreduce_appbase::sched_run(Operations* ops) {
     assert(threadinfo::initialized() &&
             "Call mapreduce_appbase::initialize first");
 //    static_appbase::set_app(this);
@@ -166,7 +166,7 @@ int mapreduce_appbase::sched_run() {
         }
     }
 
-    m_ = create_map_cbt_manager();
+    m_ = create_map_cbt_manager(ops);
 
     uint64_t real_start = read_tsc();
     uint64_t map_time = 0;
