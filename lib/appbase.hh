@@ -15,6 +15,8 @@
 #ifndef APPBASE_HH_
 #define APPBASE_HH_ 1
 
+#include <tbb/blocked_range.h>
+
 #include "mr-types.hh"
 #include "profile.hh"
 #include "bench.hh"
@@ -30,8 +32,8 @@ struct mapreduce_appbase {
         explicit ResultComparator(const Operations* o, mapreduce_appbase* a,
                 bool rev = false) :
                 reverse(rev), ops(o), app(a) {}
-        bool operator()(PartialAgg*& lhs,
-                PartialAgg*& rhs) {
+        bool operator()(PartialAgg* const& lhs,
+                PartialAgg* const& rhs) const {
             bool ret =  app->result_compare(ops->getKey(lhs),
                     ops->getValue(lhs),
                     ops->getKey(rhs), ops->getValue(rhs));
@@ -42,6 +44,18 @@ struct mapreduce_appbase {
         bool reverse;
         const Operations* ops;
         mapreduce_appbase* app;
+    };
+
+    struct free_paos {
+        std::vector<PartialAgg*>& my_results;
+        const Operations* ops;
+        void operator()(const tbb::blocked_range<size_t>& r) const {
+            for(size_t i = r.begin(); i != r.end(); ++i)
+                ops->destroyPAO(my_results[i]);
+        }
+        free_paos(std::vector<PartialAgg*>& results,
+                const Operations* o) :
+            my_results(results), ops(o) {}
     };
 
     mapreduce_appbase();

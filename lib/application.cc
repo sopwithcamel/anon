@@ -20,6 +20,9 @@
 #include <unistd.h>
 #include <inttypes.h>
 #include <iostream>
+#include <tbb/parallel_sort.h>
+#include <tbb/parallel_for.h>
+#include <tbb/tbb.h>
 
 #include "appbase.hh"
 #include "bench.hh"
@@ -349,13 +352,50 @@ void mapreduce_appbase::output_all(FILE *fout) {
 }
 void mapreduce_appbase::free_results() {
     const Operations* ops = m_->ops();
+
+    cpu_set_t oldcset, cset;
+    // store current cpu affinity
+    pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &oldcset);
+
+    // allow to use all CPUs
+    CPU_ZERO(&cset);
+    for (uint32_t i = 0; i < JOS_NCPU; ++i)
+        (CPU_SET(i, &cset));
+    pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cset);
+
+/*
     for (size_t i = 0; i < m_->results_.size(); ++i) {
         ops->destroyPAO(m_->results_[i]);
     }
+*/
+    tbb::task_scheduler_init init(tbb::task_scheduler_init::automatic);
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, m_->results_.size(),
+            1000), free_paos(m_->results_, ops) );
+
+    // restore cpuset
+    pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &oldcset);
     m_->results_.clear();
 }
 
 void mapreduce_appbase::set_final_result() {
-    sort(0, m_->results_.size() - 1);
+    cpu_set_t oldcset, cset;
+    // store current cpu affinity
+    pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &oldcset);
+
+    // allow sort to use all CPUs
+    CPU_ZERO(&cset);
+    for (uint32_t i = 0; i < JOS_NCPU; ++i)
+        (CPU_SET(i, &cset));
+    pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cset);
+
+    ResultComparator* sorter = new ResultComparator(m_->ops(), this);
+    tbb::task_scheduler_init init(tbb::task_scheduler_init::automatic);
+
+    tbb::parallel_sort(m_->results_.begin(), m_->results_.end(),
+            *sorter);
+//    sort(0, m_->results_.size() - 1);
+
+    // restore cpuset
+    pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &oldcset);
 }
 
