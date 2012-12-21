@@ -154,9 +154,8 @@ int main(int argc, char *argv[]) {
     app.set_ntrees(ntrees);
     app.set_library_name("/usr/local/lib/minni/wc_proto.so");
 
-//    ProfilerStart("/tmp/anon.perf");
+    ProfilerStart("/tmp/anon.perf");
     app.sched_run();
-//    ProfilerStop();
     app.print_stats();
     /* get the number of results to display */
     if (!quiet)
@@ -167,6 +166,7 @@ int main(int argc, char *argv[]) {
         fclose(fout);
     }
     app.free_results();
+    ProfilerStop();
     mapreduce_appbase::deinitialize();
     return 0;
 }
