@@ -15,7 +15,9 @@
 #ifndef APPBASE_HH_
 #define APPBASE_HH_ 1
 
+#include <dlfcn.h>
 #include <tbb/blocked_range.h>
+#include <semaphore.h>
 
 #include "mr-types.hh"
 #include "profile.hh"
@@ -26,6 +28,54 @@ struct mapreduce_appbase;
 struct map_cbt_manager;
 
 struct static_appbase;
+
+struct map_manager {
+    map_manager() : ops_(NULL) {}
+
+    ~map_manager() {
+        sem_destroy(&phase_semaphore_);
+    }
+    
+    const Operations* ops() const {
+        assert(ops_);
+        return ops_;
+    }
+    virtual bool emit(void *key, void *val, size_t keylen, unsigned hash) = 0;
+    virtual void flush_buffered_paos() {}
+    virtual void finish_phase(int phase) {}
+    virtual void finalize() {}
+
+  protected:
+    bool link_user_map(const std::string& soname) {
+        const char* err;
+        void* handle;
+        handle = dlopen(soname.c_str(), RTLD_NOW);
+        if (!handle) {
+            fputs(dlerror(), stderr);
+            return false;
+        }
+
+        Operations* (*create_ops_obj)() = (Operations* (*)())dlsym(handle,
+                "__libminni_create_ops");
+        if ((err = dlerror()) != NULL) {
+            fprintf(stderr, "Error locating symbol __libminni_create_ops\
+                    in %s\n", err);
+            exit(-1);
+        }
+        ops_ = create_ops_obj();
+        return true;
+    }
+
+  public:
+    sem_t phase_semaphore_;
+    // results
+    std::vector<PartialAgg*> results_;
+    pthread_mutex_t results_mutex_;
+
+  protected:
+    uint32_t ncore_;
+    Operations* ops_;
+};
 
 struct mapreduce_appbase {
     struct ResultComparator {
@@ -108,7 +158,7 @@ struct mapreduce_appbase {
     // launcher function for worker threads
     static void *base_worker(void *arg);
     void run_phase(int phase, int ncore, uint64_t &t);
-    map_cbt_manager* create_map_cbt_manager();
+    map_manager* create_map_manager();
 
     virtual void print_record(FILE* f, const char* key, void* v);
     void set_final_result();
@@ -130,7 +180,7 @@ struct mapreduce_appbase {
     int next_task_;
     int phase_;
     xarray<split_t> ma_;
-    map_cbt_manager *m_;
+    map_manager *m_;
 };
 
 #endif

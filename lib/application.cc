@@ -29,6 +29,7 @@
 #include "cpumap.hh"
 #include "thread.hh"
 #include "map_cbt_manager.hh"
+#include "map_htc_manager.hh"
 #include "array.hh"
 #include "HashUtil.h"
 
@@ -62,10 +63,16 @@ void mapreduce_appbase::deinitialize() {
     mthread_finalize();
 }
 
-map_cbt_manager *mapreduce_appbase::create_map_cbt_manager() {
-    map_cbt_manager *m = new map_cbt_manager();
-    m->init(library_name_, ncore_, ntree_);
-    return m;
+map_manager *mapreduce_appbase::create_map_manager() {
+    if (false) {
+        map_cbt_manager *cm = new map_cbt_manager();
+        cm->init(library_name_, ncore_, ntree_);
+        return cm;
+    } else {
+        map_htc_manager *hm = new map_htc_manager();
+        hm->init(library_name_, ncore_);
+        return hm;
+    }
 };
 
 int mapreduce_appbase::map_worker() {
@@ -169,7 +176,7 @@ int mapreduce_appbase::sched_run() {
         }
     }
 
-    m_ = create_map_cbt_manager();
+    m_ = create_map_manager();
 
     uint64_t real_start = read_tsc();
     uint64_t map_time = 0;

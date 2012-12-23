@@ -1,7 +1,6 @@
 #ifndef MAP_CBT_MANAGER_HH_
 #define MAP_CBT_MANAGER_HH_ 1
 
-#include <dlfcn.h>
 #include <inttypes.h>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
@@ -33,7 +32,7 @@ struct args_struct {
 };
 
 /* @brief: A map manager using the CBT as the internal data structure */
-struct map_cbt_manager {
+struct map_cbt_manager : public map_manager {
     map_cbt_manager();
     ~map_cbt_manager();
     void init(const std::string& libname, uint32_t ncore,
@@ -42,17 +41,7 @@ struct map_cbt_manager {
     void flush_buffered_paos();
     void finish_phase(int phase);
     void finalize();
-    const Operations* ops() const {
-        assert(ops_);
-        return ops_;
-    }        
-    sem_t phase_semaphore_;
-
-    // results
-    std::vector<PartialAgg*> results_;
-    pthread_mutex_t results_mutex_;
   private:
-    bool link_user_map(const std::string& libname);
     static void *worker(void *arg);
     static void *random_input_worker(void *arg);
     void submit_array(uint32_t treeid, PAOArray* buf);
@@ -92,7 +81,7 @@ struct map_cbt_manager {
 };
 
 map_cbt_manager::map_cbt_manager() :
-        kInsertAtOnce(100000), ops_(NULL),
+        kInsertAtOnce(100000),
         buffered_paos_(NULL) {
 } 
 
@@ -215,26 +204,6 @@ void map_cbt_manager::finish_phase(int phase) {
         default:
             assert(0);
     }
-}
-
-bool map_cbt_manager::link_user_map(const std::string& soname) { 
-    const char* err;
-    void* handle;
-    handle = dlopen(soname.c_str(), RTLD_NOW);
-    if (!handle) {
-        fputs(dlerror(), stderr);
-        return false;
-    }
-
-    Operations* (*create_ops_obj)() = (Operations* (*)())dlsym(handle,
-            "__libminni_create_ops");
-    if ((err = dlerror()) != NULL) {
-        fprintf(stderr, "Error locating symbol __libminni_create_ops\
-                in %s\n", err);
-        exit(-1);
-    }
-    ops_ = create_ops_obj();
-    return true;
 }
 
 void* map_cbt_manager::worker(void *x) {
