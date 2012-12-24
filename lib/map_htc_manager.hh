@@ -45,23 +45,17 @@ struct Aggregate {
     {
         for (PartialAgg** it=r.begin(); it != r.end(); ++it) {
             Hashtable::accessor a;
-            if (ht->insert(a, ops->getKey(*it))) { // wasn't present
-                a->second = *it;
+            char* k = (char*)(ops->getKey(*it));
+            if (ht->insert(a, k)) { // wasn't present
+                PartialAgg* new_pao;
+                ops->createPAO(NULL, &new_pao);
+                ops->setKey(new_pao, k);
+                void* v = ops->getValue(*it);
+                ops->setValue(new_pao, v);
+                a->second = new_pao;
             } else { // already present
                 ops->merge(a->second, *it);
-                if (destroyMerged_)
-                    ops->destroyPAO(*it);
             }
-            /*
-               const char* key = ops->getKey(*it);
-               std::pair<Hashtable::iterator, bool> ret = ht->insert(
-               std::make_pair<const char*, PartialAgg*>(key, *it));
-               if (!ret.second) { // not inserted
-               ops->merge(ret.first->second, *it);
-               if (destroyMerged_)
-               ops->destroyPAO(*it);
-               }
-             */
         }
     }
 };
@@ -209,10 +203,11 @@ void* map_htc_manager::worker(void *x) {
     pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &cset);
     tbb::task_scheduler_init init(tbb::task_scheduler_init::automatic);
 
-    while (q.empty()) {
+    while (true) {
         pthread_mutex_lock(&m->htc_queue_mutex_);
-        pthread_cond_wait(&m->htc_queue_empty_,
-                &m->htc_queue_mutex_);
+        while (q.empty())
+            pthread_cond_wait(&m->htc_queue_empty_,
+                    &m->htc_queue_mutex_);
         pthread_mutex_unlock(&m->htc_queue_mutex_);
 
         while (!q.empty()) {
@@ -239,14 +234,31 @@ void* map_htc_manager::worker(void *x) {
         if (ret == (int)m->ncore_)
             break;
     }
+    fprintf(stderr, "Worker exiting\n");
     return 0;
 }
 
 void map_htc_manager::finalize() {
-    for (Hashtable::iterator it = htc_->begin();
-            it != htc_->end(); ++it) {
-        results_.push_back(it->second);
+    uint32_t coreid = threadinfo::current()->cur_core_;
+    Hashtable::iterator my_work = htc_->begin();
+    std::vector<PartialAgg*> temp;
+    for (uint32_t i = 0; i < coreid; ++i)
+        my_work++;
+
+    for (Hashtable::iterator it = my_work; ;) {
+        temp.push_back(it->second);
+        for (uint32_t j = 0; j < ncore_; ++j) {
+            ++it;
+            if (it == htc_->end())
+                goto exit_loop;
+        }
     }
+exit_loop:
+    pthread_mutex_lock(&results_mutex_);
+    results_.insert(results_.end(), temp.begin(),
+            temp.end());
+    pthread_mutex_unlock(&results_mutex_);
+    temp.clear();
 }
 
 #endif
