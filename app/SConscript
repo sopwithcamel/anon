@@ -2,6 +2,6 @@ Import('env')
 
 wc_files = ['wc.cc']
 env.Program('wc', wc_files,
-        LIBS = ['-lprotobuf', '-lpthread', '-lcbt', '-lsnappy',
-                '-lprofiler', '-lanon', '-ltbb'],
-        LIBPATH = '..')
+        LIBS = ['protobuf', 'pthread', 'cbt', 'snappy',
+                'profiler', 'anon', 'tbb'],
+        LIBPATH = '../lib')
