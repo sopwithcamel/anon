@@ -19,7 +19,7 @@ struct args_struct;
 struct HashCompare {
     static size_t hash(const char* key)
     {
-        size_t a = HashUtil::BobHash(key, strlen(key), 42);
+        size_t a = HashUtil::MurmurHash3(key, strlen(key), 42);
         return a;
     }
     //! True if strings are equal
