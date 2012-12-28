@@ -115,7 +115,7 @@ void map_cbt_manager::init(const std::string& libname, uint32_t ncore,
     cbt_queue_empty_ = new pthread_cond_t[ntree_];
 
     uint32_t fanout = 8;
-    uint32_t buffer_size = 31457280;
+    uint32_t buffer_size = 125829120;// 31457280;
     uint32_t pao_size = 20;
     for (uint32_t j = 0; j < ntree_; ++j) {
         cbt_[j] = new cbt::CompressTree(2, fanout, 1000, buffer_size,
@@ -140,17 +140,27 @@ void map_cbt_manager::init(const std::string& libname, uint32_t ncore,
     }
 
     // set all cpus in cpu mask
-    cpu_set_t cset;
-    CPU_ZERO(&cset);
-    for (uint32_t i = ncore_; i < JOS_NCPU; ++i)
-        CPU_SET(i, &cset);
+    cpu_set_t cset1, cset2;
+    CPU_ZERO(&cset1);
+    CPU_ZERO(&cset2);
+    for (uint32_t i = 4; i < 6; ++i)
+        CPU_SET(i, &cset1);
+    for (uint32_t i = 12; i < 18; ++i)
+        CPU_SET(i, &cset1);
+    for (uint32_t i = 6; i < 12; ++i)
+        CPU_SET(i, &cset2);
+    for (uint32_t i = 18; i < 24; ++i)
+        CPU_SET(i, &cset2);
     for (uint32_t j = 0; j < ntree_; ++j) {
         args_struct* a = new args_struct(2);
         a->argv[0] = (void*)this;
         a->argv[1] = (void*)((intptr_t)j);
         args.push_back(a);
         pthread_create(&tid_[j], NULL, worker, a);
-        pthread_setaffinity_np(tid_[j], sizeof(cpu_set_t), &cset);
+        if (j < ntree_ / 2)
+            pthread_setaffinity_np(tid_[j], sizeof(cpu_set_t), &cset1);
+        else
+            pthread_setaffinity_np(tid_[j], sizeof(cpu_set_t), &cset2);
     }
 
     // results mutex
