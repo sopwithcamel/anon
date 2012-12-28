@@ -1,0 +1,7 @@
+Import('env')
+
+src_files = [Glob('*.cc')]
+
+anonlib = env.StaticLibrary('anon', src_files,
+            LIBS = ['-ljemalloc', '-lnuma', '-lc', '-lm', '-lcbt', '-lpthread'],
+            LINKFLAGS = ['--static'])
