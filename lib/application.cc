@@ -66,14 +66,14 @@ void mapreduce_appbase::deinitialize() {
 map_manager *mapreduce_appbase::create_map_manager() {
     if (false) {
         map_cbt_manager *cm = new map_cbt_manager();
-        cm->init(library_name_, ncore_, ntree_);
+        cm->init(ops_, ncore_, ntree_);
         return cm;
     } else {
         map_htc_manager *hm = new map_htc_manager();
-        hm->init(library_name_, ncore_);
+        hm->init(ops_, ncore_);
         return hm;
     }
-};
+}
 
 int mapreduce_appbase::map_worker() {
     int n, next;

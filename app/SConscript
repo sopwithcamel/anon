@@ -1,6 +1,6 @@
 Import('env')
 
-wc_files = ['wc.cc']
+wc_files = ['wc.cc', 'wc_plain.cpp']
 env.Program('wc', wc_files,
         LIBS = ['protobuf', 'pthread', 'cbt', 'snappy',
                 'profiler', 'anon', 'tbb'],

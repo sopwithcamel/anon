@@ -45,6 +45,7 @@
 #include "wc-datafile.h"
 #include <inc/sysprof.h>
 #endif
+#include "wc_plain.h"
 
 #define DEFAULT_NDISP 10
 
@@ -152,7 +153,8 @@ int main(int argc, char *argv[]) {
     wc app(fn, map_tasks);
     app.set_ncore(nprocs);
     app.set_ntrees(ntrees);
-    app.set_library_name("/usr/local/lib/minni/wc_boost.so");
+    Operations* ops = new WCPlainOperations();
+    app.set_ops(ops);
 
 //    ProfilerStart("/tmp/anon.perf");
     app.sched_run();

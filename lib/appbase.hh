@@ -132,8 +132,8 @@ struct mapreduce_appbase {
     void set_ntrees(int ntree) {
         ntree_ = ntree;
     }
-    void set_library_name(const std::string& libname) {
-        library_name_ = libname;
+    void set_ops(Operations* ops) {
+        ops_ = ops;
     }
     static void initialize();
     static void deinitialize();
@@ -167,7 +167,7 @@ struct mapreduce_appbase {
   private:
     int ncore_;   
     int ntree_;
-    std::string library_name_;
+    Operations* ops_;
     uint64_t total_sample_time_;
     uint64_t total_map_time_;
     uint64_t total_finalize_time_;

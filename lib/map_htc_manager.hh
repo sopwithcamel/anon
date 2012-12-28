@@ -64,7 +64,7 @@ struct Aggregate {
 struct map_htc_manager : public map_manager {
     map_htc_manager();
     ~map_htc_manager();
-    void init(const std::string& libname, uint32_t ncore);
+    void init(Operations* ops, uint32_t ncore);
     bool emit(void *key, void *val, size_t keylen, unsigned hash);
     void flush_buffered_paos();
     void finish_phase(int phase);
@@ -114,8 +114,8 @@ map_htc_manager::~map_htc_manager() {
     pthread_cond_destroy(&htc_queue_empty_);
 }
 
-void map_htc_manager::init(const std::string& libname, uint32_t ncore) {
-    assert(link_user_map(libname));
+void map_htc_manager::init(Operations* ops, uint32_t ncore) {
+    ops_ = ops;
     ncore_ = ncore;
 
     sem_init(&phase_semaphore_, 0, ncore_);

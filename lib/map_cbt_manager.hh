@@ -35,8 +35,7 @@ struct args_struct {
 struct map_cbt_manager : public map_manager {
     map_cbt_manager();
     ~map_cbt_manager();
-    void init(const std::string& libname, uint32_t ncore,
-            uint32_t ntree);
+    void init(Operations* ops, uint32_t ncore, uint32_t ntree);
     bool emit(void *key, void *val, size_t keylen, unsigned hash);
     void flush_buffered_paos();
     void finish_phase(int phase);
@@ -102,9 +101,8 @@ map_cbt_manager::~map_cbt_manager() {
     delete[] cbt_queue_empty_;
 }
 
-void map_cbt_manager::init(const std::string& libname, uint32_t ncore,
-        uint32_t ntree) {
-    assert(link_user_map(libname));
+void map_cbt_manager::init(Operations* ops, uint32_t ncore, uint32_t ntree) {
+    ops_ = ops;
     ncore_ = ncore;
     ntree_ = ntree;
 
