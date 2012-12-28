@@ -74,9 +74,9 @@ int mapreduce_appbase::map_worker() {
     CPU_ZERO(&cset);
     CPU_SET(threadinfo::current()->cur_core_, &cset);
     pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cset);
-    pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &cset);
     sem_wait(&m_->phase_semaphore_);
 /*
+    pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &cset);
     for (uint32_t i = 0; i < JOS_NCPU; ++i)
         if (CPU_ISSET(i, &cset))
             fprintf(stderr, "%d: CPU %d\n", pthread_self(), i);
