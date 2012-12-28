@@ -36,8 +36,7 @@ struct args_struct {
 struct map_cbt_manager {
     map_cbt_manager();
     ~map_cbt_manager();
-    void init(const std::string& libname, uint32_t ncore,
-            uint32_t ntree);
+    void init(Operations* ops, uint32_t ncore, uint32_t ntree);
     bool emit(void *key, void *val, size_t keylen, unsigned hash);
     void flush_buffered_paos();
     void finish_phase(int phase);
@@ -52,7 +51,6 @@ struct map_cbt_manager {
     std::vector<PartialAgg*> results_;
     pthread_mutex_t results_mutex_;
   private:
-    bool link_user_map(const std::string& libname);
     static void *worker(void *arg);
     static void *random_input_worker(void *arg);
     void submit_array(uint32_t treeid, PAOArray* buf);
@@ -113,9 +111,8 @@ map_cbt_manager::~map_cbt_manager() {
     delete[] cbt_queue_empty_;
 }
 
-void map_cbt_manager::init(const std::string& libname, uint32_t ncore,
-        uint32_t ntree) {
-    assert(link_user_map(libname));
+void map_cbt_manager::init(Operations* ops, uint32_t ncore, uint32_t ntree) {
+    ops_ = ops;
     ncore_ = ncore;
     ntree_ = ntree;
 
@@ -225,26 +222,6 @@ void map_cbt_manager::finish_phase(int phase) {
         default:
             assert(0);
     }
-}
-
-bool map_cbt_manager::link_user_map(const std::string& soname) { 
-    const char* err;
-    void* handle;
-    handle = dlopen(soname.c_str(), RTLD_NOW);
-    if (!handle) {
-        fputs(dlerror(), stderr);
-        return false;
-    }
-
-    Operations* (*create_ops_obj)() = (Operations* (*)())dlsym(handle,
-            "__libminni_create_ops");
-    if ((err = dlerror()) != NULL) {
-        fprintf(stderr, "Error locating symbol __libminni_create_ops\
-                in %s\n", err);
-        exit(-1);
-    }
-    ops_ = create_ops_obj();
-    return true;
 }
 
 void* map_cbt_manager::worker(void *x) {

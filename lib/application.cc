@@ -64,7 +64,7 @@ void mapreduce_appbase::deinitialize() {
 
 map_cbt_manager *mapreduce_appbase::create_map_cbt_manager() {
     map_cbt_manager *m = new map_cbt_manager();
-    m->init(library_name_, ncore_, ntree_);
+    m->init(ops_, ncore_, ntree_);
     return m;
 };
 
