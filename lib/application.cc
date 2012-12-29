@@ -64,15 +64,18 @@ void mapreduce_appbase::deinitialize() {
 }
 
 map_manager *mapreduce_appbase::create_map_manager() {
-    if (false) {
-        map_cbt_manager *cm = new map_cbt_manager();
-        cm->init(ops_, ncore_, ntree_);
-        return cm;
-    } else {
-        map_htc_manager *hm = new map_htc_manager();
-        hm->init(ops_, ncore_);
-        return hm;
+    map_manager* m;
+    switch (AGG_DS) {
+        case 0:
+            m = new map_cbt_manager();
+            ((map_cbt_manager*)m)->init(ops_, ncore_, ntree_);
+            break;
+        case 1:
+            m = new map_htc_manager();
+            ((map_htc_manager*)m)->init(ops_, ncore_);
+            break;
     }
+    return m;
 }
 
 int mapreduce_appbase::map_worker() {
