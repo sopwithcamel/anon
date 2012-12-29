@@ -56,9 +56,7 @@ struct map_cbt_manager : public map_manager {
     const uint32_t kInsertAtOnce;
 
     uint32_t ntree_;
-    uint32_t ncore_;
     cbt::CompressTree** cbt_;
-    Operations* ops_;
 
     // buffer pool
     PAOArray** buffered_paos_;
