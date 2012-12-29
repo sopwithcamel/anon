@@ -19,7 +19,7 @@ struct args_struct;
 struct HashCompare {
     static size_t hash(const char* key)
     {
-        size_t a = HashUtil::MurmurHash3(key, strlen(key), 42);
+        size_t a = HashUtil::BobHash(key, strlen(key), 42);
         return a;
     }
     //! True if strings are equal
@@ -43,19 +43,25 @@ struct Aggregate {
         ops(ops) {}
     void operator()(const tbb::blocked_range<PartialAgg**> r) const
     {
+        PartialAgg* new_pao = NULL;
         for (PartialAgg** it=r.begin(); it != r.end(); ++it) {
             Hashtable::accessor a;
-            char* k = (char*)(ops->getKey(*it));
-            if (ht->insert(a, k)) { // wasn't present
-                PartialAgg* new_pao;
+            if (!new_pao)
                 ops->createPAO(NULL, &new_pao);
-                ops->setKey(new_pao, k);
+            ops->setKey(new_pao, (char*)ops->getKey(*it));
+            char* k = (char*)(ops->getKey(new_pao));
+            if (ht->insert(a, k)) { // wasn't present
                 void* v = ops->getValue(*it);
                 ops->setValue(new_pao, v);
                 a->second = new_pao;
+                new_pao = NULL;
             } else { // already present
                 ops->merge(a->second, *it);
             }
+        }
+        if (new_pao) {
+            ops->destroyPAO(new_pao);
+            new_pao = NULL;
         }
     }
 };
@@ -234,7 +240,6 @@ void* map_htc_manager::worker(void *x) {
         if (ret == (int)m->ncore_)
             break;
     }
-    fprintf(stderr, "Worker exiting\n");
     return 0;
 }
 
