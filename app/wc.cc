@@ -41,11 +41,7 @@
 #include "appbase.hh"
 #include "defsplitter.hh"
 #include "bench.hh"
-#ifdef JOS_USER
-#include "wc-datafile.h"
-#include <inc/sysprof.h>
-#endif
-#include "wc_plain.h"
+#include "wc.hh"
 
 #define DEFAULT_NDISP 10
 
