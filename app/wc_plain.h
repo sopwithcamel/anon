@@ -2,37 +2,102 @@
 
 #define KEYLEN      12
 
-class WCPlainOperations : public Operations {
-  public:
-    Operations::SerializationMethod getSerializationMethod() const;
-    const char* getKey(PartialAgg* p) const;
-    bool setKey(PartialAgg* p, char* k) const;
-    void* getValue(PartialAgg* p) const;
-    void setValue(PartialAgg* p, void* v) const;
-    bool sameKey(PartialAgg* p1, PartialAgg* p2) const;
-	size_t createPAO(Token* t, PartialAgg** p) const;
-    bool destroyPAO(PartialAgg* p) const;
-	bool merge(PartialAgg* p, PartialAgg* mg) const;
-    inline uint32_t getSerializedSize(PartialAgg* p) const;
-    inline bool serialize(PartialAgg* p,
-            std::string* output) const;
-    inline bool serialize(PartialAgg* p,
-            char* output, size_t size) const;
-    inline bool deserialize(PartialAgg* p,
-            const std::string& input) const;
-    inline bool deserialize(PartialAgg* p,
-            const char* input, size_t size) const;
-  private:
-    size_t dividePAO(const PartialAgg& p, PartialAgg** pl) const {}
-};
-
 class WCPlainPAO : public PartialAgg
 {
     friend class WCPlainOperations;
   public:
-	WCPlainPAO(char* wrd);
-	~WCPlainPAO();
+	WCPlainPAO(char* wrd) {
+        memset(key, 0, KEYLEN);
+        if (wrd) {
+            strcpy(key, wrd);
+            count = 1;
+        } else {
+            count = 1;
+        }    
+    }
+	~WCPlainPAO() {
+    }
   private:
     char key[KEYLEN];
     uint32_t count;
+};
+
+class WCPlainOperations : public Operations {
+  public:
+    Operations::SerializationMethod getSerializationMethod() const {
+        return Operations::HAND;
+    }
+
+    const char* getKey(PartialAgg* p) const {
+        return ((WCPlainPAO*)p)->key;
+    }
+
+    bool setKey(PartialAgg* p, char* k) const {
+        WCPlainPAO* wp = (WCPlainPAO*)p;
+        strcpy(wp->key, k);
+        return true;
+    }
+
+    void* getValue(PartialAgg* p) const {
+        WCPlainPAO* wp = (WCPlainPAO*)p;
+        return (void*)(intptr_t)(wp->count);
+    }
+
+    void setValue(PartialAgg* p, void* v) const {
+        WCPlainPAO* wp = (WCPlainPAO*)p;
+        wp->count = (intptr_t)v;
+    }
+
+    bool sameKey(PartialAgg* p1, PartialAgg* p2) const {
+        return (!strcmp(((WCPlainPAO*)p1)->key, ((WCPlainPAO*)p2)->key));
+    }
+
+	size_t createPAO(Token* t, PartialAgg** p) const {
+        WCPlainPAO* new_pao;
+        if (t == NULL)
+            new_pao = new WCPlainPAO(NULL);
+        else	
+            new_pao = new WCPlainPAO((char*)t->tokens[0]);
+        p[0] = new_pao;	
+        return 1;
+    }
+
+    bool destroyPAO(PartialAgg* p) const {
+        WCPlainPAO* wp = (WCPlainPAO*)p;
+        delete wp;
+        return true;
+    }
+
+	bool merge(PartialAgg* p, PartialAgg* mg) const {
+        ((WCPlainPAO*)p)->count += ((WCPlainPAO*)mg)->count;
+        return true;
+    }
+
+    inline uint32_t getSerializedSize(PartialAgg* p) const {
+        return sizeof(WCPlainPAO);
+    }
+
+    inline bool serialize(PartialAgg* p,
+            std::string* output) const {
+        return true;
+    }
+
+    inline bool serialize(PartialAgg* p,
+            char* output, size_t size) const {
+        memcpy(output, (void*)p, sizeof(WCPlainPAO));
+        return true;
+    }
+    inline bool deserialize(PartialAgg* p,
+            const std::string& input) const {
+        return true;
+    }
+
+    inline bool deserialize(PartialAgg* p,
+            const char* input, size_t size) const {
+        memcpy((void*)p, (void*)input, sizeof(WCPlainPAO));
+        return true;
+    }
+
+  private:
+    size_t dividePAO(const PartialAgg& p, PartialAgg** pl) const {}
 };
