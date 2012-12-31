@@ -1,6 +1,6 @@
 #include "PartialAgg.h"
 
-#define KEYLEN      12
+#define KEYLEN      92
 
 class WCPlainPAO : public PartialAgg
 {
@@ -9,7 +9,7 @@ class WCPlainPAO : public PartialAgg
 	WCPlainPAO(char* wrd) {
         memset(key, 0, KEYLEN);
         if (wrd) {
-            strcpy(key, wrd);
+            strncpy(key, wrd, KEYLEN - 1);
             count = 1;
         } else {
             count = 1;
@@ -34,7 +34,8 @@ class WCPlainOperations : public Operations {
 
     bool setKey(PartialAgg* p, char* k) const {
         WCPlainPAO* wp = (WCPlainPAO*)p;
-        strcpy(wp->key, k);
+        memset(wp->key, 0, KEYLEN);
+        strncpy(wp->key, k, KEYLEN - 1);
         return true;
     }
 
