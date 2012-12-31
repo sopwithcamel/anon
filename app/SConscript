@@ -1,7 +1,19 @@
 Import('env')
 
-wc_files = ['wc.cc']
-env.Program('wc', wc_files,
+# "In-place" word-count
+env.Program('wc', ['wc.cc'],
         LIBS = ['protobuf', 'pthread', 'cbt', 'snappy',
+                'profiler', 'anon', 'tbb'],
+        LIBPATH = '../lib')
+
+# word-count with protobuf
+env.Program('wcp', ['wcp.cc', 'wcproto.pb.cc'],
+        LIBS = ['protobuf', 'pthread', 'cbt', 'snappy',
+                'profiler', 'anon', 'tbb'],
+        LIBPATH = '../lib')
+
+# "In-place" digram count
+env.Program('dg', ['dg.cc'],
+        LIBS = ['pthread', 'cbt', 'snappy',
                 'profiler', 'anon', 'tbb'],
         LIBPATH = '../lib')
