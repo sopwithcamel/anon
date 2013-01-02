@@ -1,6 +1,6 @@
 #include "PartialAgg.h"
 
-#define KEYLEN      92
+#define KEYLEN      12
 
 class WCPlainPAO : public PartialAgg
 {

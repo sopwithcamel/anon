@@ -112,7 +112,7 @@ void map_cbt_manager::init(Operations* ops, uint32_t ncore, uint32_t ntree) {
 
     uint32_t fanout = 8;
     uint32_t buffer_size = 125829120;// 31457280;
-    uint32_t pao_size = 20;
+    uint32_t pao_size = 16;
     for (uint32_t j = 0; j < ntree_; ++j) {
         cbt_[j] = new cbt::CompressTree(2, fanout, 1000, buffer_size,
                 pao_size, ops_);
@@ -177,7 +177,7 @@ bool map_cbt_manager::emit(void *k, void *v, size_t keylen, unsigned hash) {
     PAOArray* buf = buffered_paos_[bufid];
     uint32_t ind = buf->index();
     ops()->setKey(buf->list()[ind], (char*)k);
-    ops()->setValue(buf->list()[ind], (void*)(intptr_t)1);
+    ops()->setValue(buf->list()[ind], v);
     buf->set_index(ind + 1);
 
     if (buf->index() == kInsertAtOnce) {
