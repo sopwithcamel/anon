@@ -149,6 +149,10 @@ struct mapreduce_appbase {
     void map_emit(void *key, void *val, int key_length);
     void sort(uint32_t uleft, uint32_t uright);
 
+    void set_skip_results_processing(bool val) {
+        skip_results_processing_ = val;
+    }
+
     /* internal use only */
   protected:
     // responsible for insertion into CBT
@@ -159,7 +163,6 @@ struct mapreduce_appbase {
     static void *base_worker(void *arg);
     void run_phase(int phase, int ncore, uint64_t &t);
     map_manager* create_map_manager();
-
     virtual void print_record(FILE* f, const char* key, void* v);
     void set_final_result();
     void reset();
@@ -173,6 +176,8 @@ struct mapreduce_appbase {
     uint64_t total_finalize_time_;
     uint64_t total_real_time_;
     bool clean_;
+
+    bool skip_results_processing_;
     
     int next_task() {
         return atomic_add32_ret(&next_task_);

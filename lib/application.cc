@@ -49,6 +49,7 @@ mapreduce_appbase::mapreduce_appbase()
     : ncore_(), ntree_(), total_sample_time_(),
       total_map_time_(), total_finalize_time_(),
       total_real_time_(), clean_(true),
+      skip_results_processing_(false),
       next_task_(), phase_(), m_(NULL) {
 }
 
@@ -189,7 +190,9 @@ int mapreduce_appbase::sched_run() {
     m_->finish_phase(MAP);
     // finalize phase
     run_phase(FINALIZE, ncore_, finalize_time);
-    set_final_result();
+
+    if (!skip_results_processing_)
+        set_final_result();
     total_map_time_ += map_time;
     total_finalize_time_ += finalize_time;
     total_real_time_ += read_tsc() - real_start;
