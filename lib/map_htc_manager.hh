@@ -170,7 +170,7 @@ bool map_htc_manager::emit(void *k, void *v, size_t keylen, unsigned hash) {
     PAOArray* buf = buffered_paos_[bufid];
     uint32_t ind = buf->index();
     ops()->setKey(buf->list()[ind], (char*)k);
-    ops()->setValue(buf->list()[ind], (void*)(intptr_t)1);
+    ops()->setValue(buf->list()[ind], v);
     buf->set_index(ind + 1);
 
     if (buf->index() == kInsertAtOnce) {
