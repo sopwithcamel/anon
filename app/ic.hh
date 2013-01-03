@@ -4,11 +4,16 @@
 #define IDLEN       16
 #define NEIGH       4
 
+typedef struct {
+    char* img;
+    char* hash;
+} img_hash_pair_t;
+
 class ICPlainPAO : public PartialAgg
 {
     friend class ICPlainOperations;
   public:
-	ICPlainPAO(char* wrd) : num_neighbors(0) {
+	ICPlainPAO(char* wrd) : num_neighbors_(0) {
         memset(this, 0, HASHLEN + NEIGH * IDLEN + HASHLEN * NEIGH);
         if (wrd) {
             strncpy(key, wrd, HASHLEN - 1);
@@ -16,17 +21,26 @@ class ICPlainPAO : public PartialAgg
     }
 	~ICPlainPAO() {
     }
+    uint32_t num_neighbors() const {
+        return num_neighbors_;
+    }
+    img_hash_pair_t neighbor(uint32_t i) const {
+        assert(i < num_neighbors_);
+        img_hash_pair_t ih;
+        ih.img = (char*)neigh[i];
+        ih.hash = (char*)hashes[i];
+        return ih;
+    }
+    const char* hash(uint32_t i) const {
+        assert(i < num_neighbors_);
+        return neigh[i];
+    }
   private:
     char key[HASHLEN];
     char neigh[NEIGH][IDLEN];
     char hashes[NEIGH][HASHLEN + 4];
-    uint32_t num_neighbors;
+    uint32_t num_neighbors_;
 };
-
-typedef struct {
-    char* img;
-    char* hash;
-} img_hash_pair_t;
 
 class ICPlainOperations : public Operations {
   public:
@@ -76,8 +90,8 @@ class ICPlainOperations : public Operations {
 	bool merge(PartialAgg* p, PartialAgg* mg) const {
         ICPlainPAO* wp = (ICPlainPAO*)p;
         ICPlainPAO* wmp = (ICPlainPAO*)mg;
-        uint32_t n = wp->num_neighbors;
-        uint32_t m = wmp->num_neighbors;
+        uint32_t n = wp->num_neighbors_;
+        uint32_t m = wmp->num_neighbors_;
         if (n + m > NEIGH) {
             fprintf(stderr, "*");
             m = NEIGH - n;

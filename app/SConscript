@@ -17,3 +17,9 @@ env.Program('dg', ['dg.cc'],
         LIBS = ['pthread', 'cbt', 'snappy',
                 'profiler', 'anon', 'tbb'],
         LIBPATH = '../lib')
+
+# Nearest neighbors
+env.Program('nn', ['nn.cc'],
+        LIBS = ['protobuf', 'pthread', 'cbt', 'snappy',
+                'profiler', 'anon', 'tbb'],
+        LIBPATH = '../lib')
