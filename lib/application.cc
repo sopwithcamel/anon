@@ -363,6 +363,12 @@ void mapreduce_appbase::output_all(FILE *fout) {
         print_record(fout, ops->getKey(p), ops->getValue(p));
     }
 }
+
+const std::vector<PartialAgg*>& mapreduce_appbase::results() const {
+    assert(m_);
+    return m_->results_;
+}
+
 void mapreduce_appbase::free_results() {
     const Operations* ops = m_->ops();
 

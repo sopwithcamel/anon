@@ -142,6 +142,7 @@ struct mapreduce_appbase {
     virtual void print_results_header();
     virtual void print_top(size_t ndisp);
     virtual void output_all(FILE *fout);
+    virtual const std::vector<PartialAgg*>& results() const;
     void free_results();
     /* @brief: called in user defined map function. If keycopy function is
         used, Metis calls the keycopy function for each new key, and user
