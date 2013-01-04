@@ -2,7 +2,7 @@
 
 #define HASHLEN      20
 #define IDLEN       16
-#define NEIGH       4
+#define NEIGH       10
 
 typedef struct {
     char* img;
@@ -67,6 +67,7 @@ class ICPlainOperations : public Operations {
         img_hash_pair_t* ih = (img_hash_pair_t*)v;
         strncpy(wp->neigh[0], ih->img, IDLEN - 1);
         strncpy(wp->hashes[0], ih->hash, HASHLEN);
+        wp->num_neighbors_ = 1;
     }
 
     bool sameKey(PartialAgg* p1, PartialAgg* p2) const {
@@ -101,6 +102,7 @@ class ICPlainOperations : public Operations {
             strncpy(wp->neigh[n + i], wmp->neigh[i], IDLEN - 1);
             strncpy(wp->hashes[n + i], wmp->hashes[i], HASHLEN);
         }
+        wp->num_neighbors_ += m;
         return true;
     }
 

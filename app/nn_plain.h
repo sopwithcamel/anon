@@ -1,15 +1,15 @@
 #include "PartialAgg.h"
 
-#define KEYLEN      12
+#define IDLEN   16
 
 class NNPlainPAO : public PartialAgg
 {
     friend class NNPlainOperations;
   public:
 	NNPlainPAO(char* wrd) {
-        memset(key, 0, KEYLEN);
+        memset(key, 0, IDLEN);
         if (wrd) {
-            strncpy(key, wrd, KEYLEN - 1);
+            strncpy(key, wrd, IDLEN - 1);
             hamming_dist = 1;
         } else {
             hamming_dist = 1;
@@ -18,8 +18,8 @@ class NNPlainPAO : public PartialAgg
 	~NNPlainPAO() {
     }
   private:
-    char key[KEYLEN];
-    char nn[KEYLEN];
+    char key[IDLEN];
+    char nn[IDLEN];
     uint32_t hamming_dist;
 };
 
@@ -40,19 +40,21 @@ class NNPlainOperations : public Operations {
 
     bool setKey(PartialAgg* p, char* k) const {
         NNPlainPAO* wp = (NNPlainPAO*)p;
-        memset(wp->key, 0, KEYLEN);
-        strncpy(wp->key, k, KEYLEN - 1);
+        memset(wp->key, 0, IDLEN);
+        strncpy(wp->key, k, IDLEN - 1);
         return true;
     }
 
     void* getValue(PartialAgg* p) const {
         NNPlainPAO* wp = (NNPlainPAO*)p;
-        return (void*)(intptr_t)(wp->hamming_dist);
+        return (void*)(wp->nn);
     }
 
     void setValue(PartialAgg* p, void* v) const {
         NNPlainPAO* wp = (NNPlainPAO*)p;
-        wp->hamming_dist = (intptr_t)v;
+        img_dist_pair_t* id = (img_dist_pair_t*)v;
+        strncpy(wp->nn, id->img, IDLEN - 1);
+        wp->hamming_dist = id->dist;
     }
 
     bool sameKey(PartialAgg* p1, PartialAgg* p2) const {
@@ -96,6 +98,7 @@ class NNPlainOperations : public Operations {
         memcpy(output, (void*)p, sizeof(NNPlainPAO));
         return true;
     }
+
     inline bool deserialize(PartialAgg* p,
             const std::string& input) const {
         assert(false && "Not implemented");

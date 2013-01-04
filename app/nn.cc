@@ -80,6 +80,7 @@ int main(int argc, char *argv[]) {
     ic.set_ops(ic_ops);
     ic.set_skip_results_processing(true);
     ic.sched_run();
+    fprintf(stderr, "IC produced %ld keys\n", ic.results().size());
 
     // run brute-force nn within clusters
     nearest_neighbor nn(ic.results(), map_tasks);

@@ -138,9 +138,8 @@ struct img_cluster : public mapreduce_appbase {
     }
 
     void print_results_header() {}
-    void print_record(FILE* f, const char* key, void* v) {
-        fprintf(f, "%15s - %d\n", key, ptr2int<unsigned>(v));
-    }
+    void print_record(FILE* f, const char* key, void* v) {}
+
   private:
     overlap_splitter s_;
 };
@@ -170,7 +169,10 @@ struct nearest_neighbor : public mapreduce_appbase {
 
     uint32_t hamming_distance(const char* s1, const char* s2) {
         // TODO: implement
-        return 0;
+        uint32_t ret = 0;
+        for (uint32_t i = 0; i < HASHLEN; ++i)
+            if (s1[i] != s2[i]) ++ret;
+        return ret;
     }
 
     void map_function(split_t *ma) {
@@ -179,22 +181,32 @@ struct nearest_neighbor : public mapreduce_appbase {
                 i < ma->split_end_offset; ++i) {
             ICPlainPAO* p = (ICPlainPAO*)input_[i];
             uint32_t n = p->num_neighbors();
-            for (uint32_t i = 0; i < n; ++i) {
-                for (uint32_t j = 0; j < n; ++j) {
-                    if (i == j) continue;
-                    img_hash_pair_t ih1 = p->neighbor(i);
-                    img_hash_pair_t ih2 = p->neighbor(j);
-                    map_emit(ih1.img, ih2.img,
-                            hamming_distance(ih1.hash, ih2.hash));
+            if (n == 1)
+                continue;
+            for (uint32_t j = 0; j < n; ++j) {
+                for (uint32_t k = 0; k < n; ++k) {
+                    if (j == k) continue;
+                    img_hash_pair_t ih1 = p->neighbor(j);
+                    img_hash_pair_t ih2 = p->neighbor(k);
+                    id->img = ih2.img;
+                    id->dist = hamming_distance(ih1.hash, ih2.hash);
+                    map_emit(ih1.img, id, IDLEN - 1);
                 }
             }
         }
         delete id;
     }
+
     bool result_compare(const char* k1, const void* v1, 
             const char* k2, const void* v2) {}
-    void print_results_header() {}
-    void print_record(FILE* f, const char* key, void* v) {}
+
+    void print_results_header() {
+        printf("\nnearest neighbor: results\n");
+    }
+
+    void print_record(FILE* f, const char* key, void* v) {
+        fprintf(f, "%15s - %15s\n", key, (char*)v);
+    }
 
     const std::vector<PartialAgg*>& input_;
     int nsplit_;
