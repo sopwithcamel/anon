@@ -40,8 +40,10 @@
 #include <sched.h>
 #include "appbase.hh"
 #include "defsplitter.hh"
+#include "tokenizers.hh"
 #include "bench.hh"
 #include "wc.hh"
+#include "wc_boost.h"
 
 #define DEFAULT_NDISP 10
 
@@ -50,95 +52,6 @@
 //#define HADOOP
 
 enum { with_value_modifier = 1 };
-
-static int alphanumeric;
-
-struct split_digram {
-    split_digram(split_t *ma) :
-            ma_(ma), len_(0),
-            bytewise_(false),
-            last_(NULL), last_len_(0) {
-        assert(ma_ && ma_->data);
-        str_ = ma_->data;
-    }
-
-    bool fill(char *k, size_t maxlen, size_t &klen) {
-        char* spl;
-        size_t chunk_length = ma_->chunk_end_offset -
-            ma_->chunk_start_offset;
-
-        if (bytewise_) {
-            char *d = ma_->data;
-            klen = 0;
-            // last_ should not be NULL since this branch oughtn't be entered
-            // first
-            assert(last_);
-
-            for (; len_ < chunk_length && !isalnum(d[len_]); ++len_);
-            if (len_ == chunk_length) {
-                return false;
-            }
-
-            // First copy the last string
-            strncpy(k, last_, last_len_);
-            klen = last_len_;
-            k[klen++] = '-';
-            k[klen] = 0;
-
-            last_ = &d[len_];
-
-            for (; len_ < chunk_length && isalnum(d[len_]); ++len_) {
-                k[klen++] = d[len_];
-            }
-            k[klen] = 0;
-            last_len_ = klen - last_len_ - 1;
-
-            return true;
-        }
-
-        const char* stop = " .-=_\t\n\r\'\"?,;`:!*()-\0\uFEFF";
-
-        if (last_ == NULL) {
-            // split token
-            spl = strtok_r(str_, stop, &saveptr1);
-            if (spl == NULL)
-                return false;
-            last_ = spl;
-            last_len_ = strlen(last_);
-            str_ = NULL;
-        }
-        strncpy(k, last_, last_len_);
-        klen = last_len_;
-
-        k[klen++] = '-';
-        k[klen] = '\0';
-
-        // split for second token
-        spl = strtok_r(NULL, stop, &saveptr1);
-        int l = strlen(spl);
-        strncat(k, spl, l);
-        klen += l;
-
-        // update last_ and last_len_ for later
-        last_ = spl;
-        last_len_ = l;
-
-        if (spl + maxlen > ma_->data + chunk_length) {
-            bytewise_ = true;
-            len_ = (spl - ma_->data) + klen;
-        }
-        return true;
-    }
-
-  private:
-    split_t* ma_;
-    char* str_;
-    char* saveptr1;
-    size_t len_;
-    bool bytewise_;
-    char* last_;
-    size_t last_len_;
-};
 
 struct dg : public mapreduce_appbase {
     dg(const char *f, int nsplit) : s_(f, nsplit) {}
@@ -185,13 +98,14 @@ static void usage(char *prog) {
     printf("  -r #reduce tasks : # of reduce tasks\n");
     printf("  -l ntops : # of top val. pairs to display\n");
     printf("  -q : quiet output (for batch test)\n");
-    printf("  -a : alphanumeric word count\n");
+    printf("  -x : pointer mode for digram count\n");
     printf("  -o filename : save output to a file\n");
     exit(EXIT_FAILURE);
 }
 
 int main(int argc, char *argv[]) {
     int nprocs = 0, map_tasks = 0, ndisp = 5, ntrees = 0;
+    int pointer_mode = 0;
     int quiet = 0;
     int c;
     if (argc < 2)
@@ -199,7 +113,7 @@ int main(int argc, char *argv[]) {
     char *fn = argv[1];
     FILE *fout = NULL;
 
-    while ((c = getopt(argc - 1, argv + 1, "p:t:s:l:m:r:qao:")) != -1) {
+    while ((c = getopt(argc - 1, argv + 1, "p:t:s:l:m:r:qxo:")) != -1) {
         switch (c) {
             case 'p':
                 nprocs = atoi(optarg);
@@ -216,8 +130,8 @@ int main(int argc, char *argv[]) {
             case 'q':
                 quiet = 1;
                 break;
-            case 'a':
-                alphanumeric = 1;
+            case 'x':
+                pointer_mode = 1;
                 break;
             case 'o':
                 fout = fopen(optarg, "w+");
@@ -238,7 +152,11 @@ int main(int argc, char *argv[]) {
     dg app(fn, map_tasks);
     app.set_ncore(nprocs);
     app.set_ntrees(ntrees);
-    Operations* ops = new WCPlainOperations();
+    Operations* ops;
+    if (pointer_mode)
+        ops = new WCBoostOperations();
+    else
+        ops = new WCPlainOperations();
     app.set_ops(ops);
 
 //    ProfilerStart("/tmp/anon.perf");
