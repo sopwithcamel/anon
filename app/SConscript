@@ -1,9 +1,9 @@
 Import('env')
 
-# "In-place" word-count
+# word-count
 env.Program('wc', ['wc.cc'],
         LIBS = ['protobuf', 'pthread', 'cbt', 'snappy',
-                'profiler', 'anon', 'tbb'],
+                'anon', 'tbb'],
         LIBPATH = '../lib')
 
 # word-count with protobuf
@@ -12,7 +12,7 @@ env.Program('wcp', ['wcp.cc', 'wcproto.pb.cc'],
                 'profiler', 'anon', 'tbb'],
         LIBPATH = '../lib')
 
-# "In-place" digram count
+# digram count
 env.Program('dg', ['dg.cc'],
         LIBS = ['pthread', 'cbt', 'snappy',
                 'profiler', 'anon', 'tbb'],
@@ -23,3 +23,10 @@ env.Program('nn', ['nn.cc'],
         LIBS = ['protobuf', 'pthread', 'cbt', 'snappy',
                 'profiler', 'anon', 'tbb'],
         LIBPATH = '../lib')
+
+# Maximum length of word
+env.Program('maxlen', ['maxlen.cc'],
+        LIBS = ['pthread', 'cbt', 'snappy',
+                'profiler', 'anon', 'tbb'],
+        LIBPATH = '../lib')
+

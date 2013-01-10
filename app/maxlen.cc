@@ -1,34 +1,8 @@
-/* Copyright (c) 2007, Stanford University
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above copyright
- *       notice, this list of conditions and the following disclaimer in the
- *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of Stanford University nor the
- *       names of its contributors may be used to endorse or promote products
- *       derived from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY STANFORD UNIVERSITY ``AS IS'' AND ANY
- * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL STANFORD UNIVERSITY BE LIABLE FOR ANY
- * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
- * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
- * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
 #include <stdio.h>
 #include <string.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <gperftools/profiler.h>
-#include <gperftools/heap-profiler.h>
 #include <assert.h>
 #include <fcntl.h>
 #include <ctype.h>
@@ -40,7 +14,7 @@
 #include <sys/time.h>
 #include <sched.h>
 #include "appbase.hh"
-#include "defsplitter.hh"
+#include "overlap_splitter.hh"
 #include "tokenizers.hh"
 #include "bench.hh"
 #include "wc.hh"
@@ -48,14 +22,8 @@
 
 #define DEFAULT_NDISP 10
 
-/* Hadoop print all the key/value paris at the end.  This option 
- * enables wordcount to print all pairs for fair comparison. */
-//#define HADOOP
-
-enum { with_value_modifier = 1 };
-
-struct wc : public mapreduce_appbase {
-    wc(const char *f, int nsplit) : s_(f, nsplit) {}
+struct maxlen : public mapreduce_appbase {
+    maxlen(const char *f, int nsplit) : s_(f, nsplit) {}
     bool split(split_t *ma, int ncores) {
         return s_.split(ma, ncores, " \t\r\n\0");
     }
@@ -64,13 +32,17 @@ struct wc : public mapreduce_appbase {
     }
     void map_function(split_t *ma) {
         char k[1024];
+        char key[1024];
         size_t klen;
         do {
-            split_word sw(ma);
-            while (sw.fill(k, 1024, klen)) {
-                k[klen] = '\0';
-                map_emit(k, (void *)(intptr_t)1, klen);
+            split_digram sd(ma);
+            while (sd.fill(k, 1024, klen)) {
+                if (klen <= 64) {
+                    sprintf(key, "%d", strlen(k));
+                    map_emit(key, (void *)1, klen);
+                }
                 memset(k, 0, klen);
+                memset(key, 0, 4);
             }
         } while (s_.get_split_chunk(ma));
     }
@@ -89,7 +61,7 @@ struct wc : public mapreduce_appbase {
             fprintf(f, "%15s - %d\n", key, ptr2int<unsigned>(v));
     }
   private:
-    defsplitter s_;
+    overlap_splitter s_;
 };
 
 static void usage(char *prog) {
@@ -100,13 +72,13 @@ static void usage(char *prog) {
     printf("  -r #reduce tasks : # of reduce tasks\n");
     printf("  -l ntops : # of top val. pairs to display\n");
     printf("  -q : quiet output (for batch test)\n");
-    printf("  -x : use PAOs with pointers\n");
+    printf("  -x : pointer mode for digram count\n");
     printf("  -o filename : save output to a file\n");
     exit(EXIT_FAILURE);
 }
 
 int main(int argc, char *argv[]) {
-    int nprocs = 0, map_tasks = 0, ndisp = 5, ntrees = 0;
+    int nprocs = 0, map_tasks = 0, ndisp = 50, ntrees = 0;
     int pointer_mode = 0;
     int quiet = 0;
     int c;
@@ -151,7 +123,7 @@ int main(int argc, char *argv[]) {
     }
     mapreduce_appbase::initialize();
     /* get input file */
-    wc app(fn, map_tasks);
+    maxlen app(fn, map_tasks);
     app.set_ncore(nprocs);
     app.set_ntrees(ntrees);
     Operations* ops;
@@ -161,6 +133,7 @@ int main(int argc, char *argv[]) {
         ops = new WCPlainOperations();
     app.set_ops(ops);
 
+//    ProfilerStart("/tmp/anon.perf");
     app.sched_run();
     app.print_stats();
     /* get the number of results to display */
@@ -172,6 +145,7 @@ int main(int argc, char *argv[]) {
         fclose(fout);
     }
     app.free_results();
+//    ProfilerStop();
     mapreduce_appbase::deinitialize();
     return 0;
 }

@@ -40,6 +40,7 @@
 #include <sched.h>
 #include "appbase.hh"
 #include "defsplitter.hh"
+#include "tokenizers.hh"
 #include "bench.hh"
 #include "wc_proto.h"
 
