@@ -18,18 +18,7 @@
 
 using namespace google::protobuf::io;
 
-struct args_struct {
-  public:
-    explicit args_struct(uint32_t c) {
-        argc = c;
-        argv = new void*[c];
-    }
-    ~args_struct() {
-        delete[] argv;
-    }
-    void** argv;
-    uint32_t argc;
-};
+struct args_struct;
 
 /* @brief: A map manager using the CBT as the internal data structure */
 struct map_cbt_manager : public map_manager {
@@ -44,13 +33,6 @@ struct map_cbt_manager : public map_manager {
     static void *worker(void *arg);
     static void *random_input_worker(void *arg);
     void submit_array(uint32_t treeid, PAOArray* buf);
-
-    // random input generation
-    void generate_fillers(uint32_t filler_len);
-    void generate_paos(PAOArray* buf, uint32_t num_paos);
-    static float Conv26(float x) {
-        return x * log(2)/log(26);
-    }
 
   private:
     const uint32_t kInsertAtOnce;
@@ -67,14 +49,6 @@ struct map_cbt_manager : public map_manager {
     pthread_mutex_t* cbt_queue_mutex_;
     pthread_cond_t* cbt_queue_empty_;
     std::vector<std::deque<PAOArray*>*> cbt_queue_;    
-
-    // random input generation
-    uint32_t num_unique_keys_;
-    uint32_t key_length_;
-    uint32_t num_fillers_;
-    uint32_t num_full_loops_;
-    uint32_t part_loop_;
-    std::vector<char*> fillers_;
 };
 
 map_cbt_manager::map_cbt_manager() :
@@ -112,7 +86,7 @@ void map_cbt_manager::init(Operations* ops, uint32_t ncore, uint32_t ntree) {
 
     uint32_t fanout = 8;
     uint32_t buffer_size = 125829120;// 31457280;
-    uint32_t pao_size = 16;
+    uint32_t pao_size = 64;
     for (uint32_t j = 0; j < ntree_; ++j) {
         cbt_[j] = new cbt::CompressTree(2, fanout, 1000, buffer_size,
                 pao_size, ops_);
@@ -245,65 +219,6 @@ void* map_cbt_manager::worker(void *x) {
         if (ret == (int)m->ncore_)
             break;
     }
-    return 0;
-}
-
-void map_cbt_manager::generate_fillers(uint32_t filler_len) {
-    for (uint32_t i = 0; i < num_fillers_; ++i) {
-        char* f = new char[filler_len + 1];
-        for (uint32_t j = 0; j < filler_len; ++j)
-            f[j] = 97 + rand() % 26;
-        f[filler_len] = '\0';
-        fillers_.push_back(f);
-    }
-}
-
-
-void map_cbt_manager::generate_paos(PAOArray* buf, uint32_t number_of_paos) {
-    char* word = new char[key_length_ + 1];
-    for (uint32_t i = 0; i < number_of_paos; ++i) {
-        for (uint32_t j=0; j < num_full_loops_; j++)
-            word[j] = 97 + rand() % 26;
-        word[num_full_loops_] = 97 + rand() % part_loop_;
-        word[num_full_loops_ + 1] = '\0';
-
-        uint32_t filler_number = HashUtil::MurmurHash(word,
-                strlen(word), 42) % num_fillers_;
-        //            fprintf(stderr, "%d, %s\n", filler_number, fillers_[filler_number]);
-
-        strncat(word, fillers_[filler_number], key_length_ -
-                num_full_loops_ - 1);
-
-        ops()->setKey(buf->list()[i], (char*)word);
-    }
-    delete[] word;
-}
-
-void* map_cbt_manager::random_input_worker(void *x) {
-    args_struct* a = (args_struct*)x;
-    map_cbt_manager* m = (map_cbt_manager*)(a->argv[0]);
-    uint32_t treeid = (intptr_t)(a->argv[1]);
-
-    uint64_t t0 = read_tsc();
-    PAOArray* buf = m->bufpool_->get_buffer();
-    m->num_unique_keys_ = 10000000;
-    m->key_length_ = 7;
-    m->num_fillers_ = 100000;
-    m->num_full_loops_ = (int)floor(Conv26(log2(m->num_unique_keys_)));
-    m->part_loop_ = (int)ceil(m->num_unique_keys_ / pow(26, m->num_full_loops_));
-
-    m->generate_fillers(m->key_length_ - m->num_full_loops_ - 1);
-
-    for (uint32_t i = 0; i < 1000; ++i) {
-        m->generate_paos(buf, m->kInsertAtOnce);
-        // perform insertion
-        m->cbt_[treeid]->bulk_insert(buf->list(), buf->index());
-    }
-    // return buffer to pool
-    m->bufpool_->return_buffer(buf);
-    uint64_t t = read_tsc() - t0;
-    fprintf(stderr, "random input insertion time: %lu\n", t);
-    exit(0);
     return 0;
 }
 

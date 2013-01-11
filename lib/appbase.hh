@@ -29,6 +29,19 @@ struct map_cbt_manager;
 
 struct static_appbase;
 
+struct args_struct {
+  public:
+    explicit args_struct(uint32_t c) {
+        argc = c;
+        argv = new void*[c];
+    }
+    ~args_struct() {
+        delete[] argv;
+    }
+    void** argv;
+    uint32_t argc;
+};
+
 struct map_manager {
     map_manager() : ops_(NULL) {}
 
