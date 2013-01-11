@@ -1,32 +1,29 @@
 Import('env')
 
+app_libs = ['nsort', 'protobuf', 'pthread', 'cbt', 'snappy',
+                'anon', 'tbb'],
 # word-count
 env.Program('wc', ['wc.cc'],
-        LIBS = ['protobuf', 'pthread', 'cbt', 'snappy',
-                'anon', 'tbb'],
+        LIBS = app_libs,
         LIBPATH = '../lib')
 
 # word-count with protobuf
 env.Program('wcp', ['wcp.cc', 'wcproto.pb.cc'],
-        LIBS = ['protobuf', 'pthread', 'cbt', 'snappy',
-                'profiler', 'anon', 'tbb'],
+        LIBS = app_libs,
         LIBPATH = '../lib')
 
 # digram count
 env.Program('dg', ['dg.cc'],
-        LIBS = ['pthread', 'cbt', 'snappy',
-                'profiler', 'anon', 'tbb'],
+        LIBS = app_libs,
         LIBPATH = '../lib')
 
 # Nearest neighbors
 env.Program('nn', ['nn.cc'],
-        LIBS = ['protobuf', 'pthread', 'cbt', 'snappy',
-                'profiler', 'anon', 'tbb'],
+        LIBS = app_libs,
         LIBPATH = '../lib')
 
 # Maximum length of word
 env.Program('maxlen', ['maxlen.cc'],
-        LIBS = ['pthread', 'cbt', 'snappy',
-                'profiler', 'anon', 'tbb'],
+        LIBS = app_libs,
         LIBPATH = '../lib')
 
