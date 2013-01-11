@@ -30,6 +30,8 @@
 #include "thread.hh"
 #include "map_cbt_manager.hh"
 #include "map_htc_manager.hh"
+#include "map_sh_manager.hh"
+#include "map_nsort_manager.hh"
 #include "array.hh"
 #include "HashUtil.h"
 
@@ -74,6 +76,14 @@ map_manager *mapreduce_appbase::create_map_manager() {
         case 1:
             m = new map_htc_manager();
             ((map_htc_manager*)m)->init(ops_, ncore_);
+            break;
+        case 2:
+            m = new map_sh_manager();
+            ((map_sh_manager*)m)->init(ops_, ncore_, ntree_);
+            break;
+        case 3:
+            m = new map_nsort_manager();
+            ((map_nsort_manager*)m)->init(ops_, ncore_);
             break;
     }
     return m;
