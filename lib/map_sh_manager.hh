@@ -185,6 +185,10 @@ void map_sh_manager::finish_phase(int phase) {
     switch (phase) {
         case MAP:
             for (uint32_t treeid = 0; treeid < ntables_; ++treeid) {
+                pthread_mutex_lock(&sh_queue_mutex_[treeid]);
+                pthread_cond_signal(&sh_queue_empty_[treeid]);
+                pthread_mutex_unlock(&sh_queue_mutex_[treeid]);
+
                 pthread_join(tid_[treeid], NULL);
             }
             break;
@@ -203,7 +207,7 @@ void* map_sh_manager::worker(void *x) {
     cpu_set_t cset;
     pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &cset);
 
-    while (q->empty()) {
+    while (true) {
         pthread_mutex_lock(&m->sh_queue_mutex_[treeid]);
         pthread_cond_wait(&m->sh_queue_empty_[treeid],
                 &m->sh_queue_mutex_[treeid]);
@@ -265,21 +269,23 @@ void map_sh_manager::finalize() {
     uint32_t coreid = threadinfo::current()->cur_core_;
     if (coreid >= ntables_)
         return;
-    uint32_t treeid = coreid;
+    uint32_t tableid;
 
     PAOArray* buf = buffered_paos_[coreid];
     Hash::iterator it;
-    uint32_t ind = 0;
     PartialAgg** arr = buf->list();
-    for (it = sh_[treeid]->begin(); it != sh_[treeid]->end(); ++it) {
-        arr[ind++] = it->second;
-        if (ind > kInsertAtOnce) {
-            // copy results
-            pthread_mutex_lock(&results_mutex_);
-            results_.insert(results_.end(), &buf->list()[0],
-                    &buf->list()[ind - 1]);
-            pthread_mutex_unlock(&results_mutex_);
-            ind = 0;
+    for (tableid = coreid; tableid < ntables_; tableid += ncore_) {
+        uint32_t ind = 0;
+        for (it = sh_[tableid]->begin(); it != sh_[tableid]->end(); ++it) {
+            arr[ind++] = it->second;
+            if (ind > kInsertAtOnce) {
+                // copy results
+                pthread_mutex_lock(&results_mutex_);
+                results_.insert(results_.end(), &buf->list()[0],
+                        &buf->list()[ind - 1]);
+                pthread_mutex_unlock(&results_mutex_);
+                ind = 0;
+            }
         }
     }
 }
