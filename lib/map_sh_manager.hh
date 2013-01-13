@@ -91,7 +91,6 @@ void map_sh_manager::init(Operations* ops, uint32_t ncore, uint32_t ntables) {
     ncore_ = ncore;
     ntables_ = ntables;
 
-    sem_init(&phase_semaphore_, 0, ncore_);
     // create SHs
     sh_ = new Hash*[ntables_];
     sh_queue_mutex_ = new pthread_mutex_t[ntables_];
@@ -269,23 +268,21 @@ void map_sh_manager::finalize() {
     uint32_t coreid = threadinfo::current()->cur_core_;
     if (coreid >= ntables_)
         return;
-    uint32_t tableid;
+    uint32_t tableid = coreid;
 
     PAOArray* buf = buffered_paos_[coreid];
     Hash::iterator it;
     PartialAgg** arr = buf->list();
-    for (tableid = coreid; tableid < ntables_; tableid += ncore_) {
-        uint32_t ind = 0;
-        for (it = sh_[tableid]->begin(); it != sh_[tableid]->end(); ++it) {
-            arr[ind++] = it->second;
-            if (ind > kInsertAtOnce) {
-                // copy results
-                pthread_mutex_lock(&results_mutex_);
-                results_.insert(results_.end(), &buf->list()[0],
-                        &buf->list()[ind - 1]);
-                pthread_mutex_unlock(&results_mutex_);
-                ind = 0;
-            }
+    uint32_t ind = 0;
+    for (it = sh_[tableid]->begin(); it != sh_[tableid]->end(); ++it) {
+        arr[ind++] = it->second;
+        if (ind > kInsertAtOnce) {
+            // copy results
+            pthread_mutex_lock(&results_mutex_);
+            results_.insert(results_.end(), &buf->list()[0],
+                    &buf->list()[ind - 1]);
+            pthread_mutex_unlock(&results_mutex_);
+            ind = 0;
         }
     }
 }
