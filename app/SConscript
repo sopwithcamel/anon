@@ -1,6 +1,6 @@
 Import('env')
 
-app_libs = ['nsort', 'protobuf', 'pthread', 'cbt', 'snappy',
+app_libs = ['nsort', 'protobuf', 'pthread', 'cbt', 'snappy', 'profiler',
                 'anon', 'tbb'],
 # word-count
 env.Program('wc', ['wc.cc'],
