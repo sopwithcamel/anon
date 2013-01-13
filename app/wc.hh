@@ -75,7 +75,8 @@ class WCPlainOperations : public Operations {
     }
 
     inline uint32_t getSerializedSize(PartialAgg* p) const {
-        return sizeof(WCPlainPAO);
+        WCPlainPAO* wp = (WCPlainPAO*)p;
+        return strlen(wp->key) + sizeof(uint32_t) + 1;
     }
 
     inline bool serialize(PartialAgg* p,
@@ -85,7 +86,9 @@ class WCPlainOperations : public Operations {
 
     inline bool serialize(PartialAgg* p,
             char* output, size_t size) const {
-        memcpy(output, (void*)p, sizeof(WCPlainPAO));
+        WCPlainPAO* wp = (WCPlainPAO*)p;
+        memcpy(output, &wp->count, sizeof(uint32_t));
+        strcpy(&output[sizeof(uint32_t)], wp->key);
         return true;
     }
     inline bool deserialize(PartialAgg* p,
@@ -95,7 +98,9 @@ class WCPlainOperations : public Operations {
 
     inline bool deserialize(PartialAgg* p,
             const char* input, size_t size) const {
-        memcpy((void*)p, (void*)input, sizeof(WCPlainPAO));
+        WCPlainPAO* wp = (WCPlainPAO*)p;
+        memcpy(&wp->count, input, sizeof(uint32_t));
+        strcpy(wp->key, &input[sizeof(uint32_t)]);
         return true;
     }
 

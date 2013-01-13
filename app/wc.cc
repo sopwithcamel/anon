@@ -161,8 +161,9 @@ int main(int argc, char *argv[]) {
         ops = new WCPlainOperations();
     app.set_ops(ops);
 
+//    ProfilerStart("/tmp/anon.perf");
     app.sched_run();
-    app.print_stats();
+//    app.print_stats();
     /* get the number of results to display */
     if (!quiet)
         app.print_results_header();
@@ -172,6 +173,7 @@ int main(int argc, char *argv[]) {
         fclose(fout);
     }
     app.free_results();
+//    ProfilerStop();
     mapreduce_appbase::deinitialize();
     return 0;
 }
