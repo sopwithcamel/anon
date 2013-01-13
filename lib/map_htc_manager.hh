@@ -124,7 +124,6 @@ void map_htc_manager::init(Operations* ops, uint32_t ncore) {
     ops_ = ops;
     ncore_ = ncore;
 
-    sem_init(&phase_semaphore_, 0, ncore_);
     // create CBTs
     htc_ = new Hashtable();
 

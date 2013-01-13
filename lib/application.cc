@@ -51,7 +51,7 @@ mapreduce_appbase::mapreduce_appbase()
     : ncore_(), ntree_(), total_sample_time_(),
       total_map_time_(), total_finalize_time_(),
       total_real_time_(), clean_(true),
-      skip_results_processing_(false),
+      skip_results_processing_(true),
       next_task_(), phase_(), m_(NULL) {
 }
 
@@ -139,20 +139,22 @@ void *mapreduce_appbase::base_worker(void *x) {
     return 0;
 }
 
-void mapreduce_appbase::run_phase(int phase, int ncore, uint64_t &t) {
+void mapreduce_appbase::run_phase(int phase, int nworkers, uint64_t &t) {
     uint64_t t0 = read_tsc();
     prof_phase_stat st;
     bzero(&st, sizeof(st));
     prof_phase_init(&st);
     pthread_t tid[JOS_NCPU];
     phase_ = phase;
-    for (int i = 0; i < ncore; ++i) {
+
+    sem_init(&m_->phase_semaphore_, 0, nworkers);
+    for (int i = 0; i < nworkers; ++i) {
         if (i == main_core)
             continue;
         mthread_create(&tid[i], i, base_worker, this);
     }
     mthread_create(&tid[main_core], main_core, base_worker, this);
-    for (int i = 0; i < ncore; ++i) {
+    for (int i = 0; i < nworkers; ++i) {
         if (i == main_core)
             continue;
         void *ret;
@@ -175,9 +177,6 @@ int mapreduce_appbase::sched_run() {
     if (!ntree_)
         ntree_ = 1;
 
-    // initialize threads
-    mthread_init(ncore_);
-
     // pre-split
     ma_.clear();
     while (true) {
@@ -195,12 +194,35 @@ int mapreduce_appbase::sched_run() {
     uint64_t real_start = read_tsc();
     uint64_t map_time = 0;
     uint64_t finalize_time = 0;
-    // map phase
-    run_phase(MAP, ncore_, map_time);
-    m_->finish_phase(MAP);
-    // finalize phase
-    run_phase(FINALIZE, ncore_, finalize_time);
 
+    // map phase
+    uint32_t num_map_workers = ncore_;
+    mthread_init(num_map_workers);
+    run_phase(MAP, num_map_workers, map_time);
+    m_->finish_phase(MAP);
+    mthread_finalize();
+    
+    // finalize phase
+    uint32_t num_finalize_workers;
+    switch(AGG_DS) {
+        case 0: // CBT
+            num_finalize_workers = ntree_ * 2;
+            break;
+        case 1: // HTC
+            num_finalize_workers = ncore_;
+            break;
+        case 2: // SH
+            num_finalize_workers = ntree_;
+            break;
+        case 3: // nsort
+            num_finalize_workers = ncore_;
+            break;
+    }
+    mthread_init(num_finalize_workers);
+    run_phase(FINALIZE, num_finalize_workers, finalize_time);
+    mthread_finalize();
+
+    fprintf(stderr, "Results has %u elements\n", m_->results_.size());
     if (!skip_results_processing_)
         set_final_result();
     total_map_time_ += map_time;
@@ -328,6 +350,8 @@ void mapreduce_appbase::sort(uint32_t uleft, uint32_t uright) {
 }
 
 void mapreduce_appbase::print_top(size_t ndisp) {
+    if (skip_results_processing_)
+        return;
     ndisp = std::min(ndisp, m_->results_.size());
     const Operations* ops = m_->ops();
 /*
@@ -367,6 +391,8 @@ void mapreduce_appbase::print_top(size_t ndisp) {
 }
 
 void mapreduce_appbase::output_all(FILE *fout) {
+    if (skip_results_processing_)
+        return;
     const Operations* ops = m_->ops();
     for (uint32_t i = 0; i < m_->results_.size(); i++) {
         PartialAgg *p = m_->results_[i];
@@ -380,6 +406,9 @@ const std::vector<PartialAgg*>& mapreduce_appbase::results() const {
 }
 
 void mapreduce_appbase::free_results() {
+    if (skip_results_processing_)
+        return;
+
     const Operations* ops = m_->ops();
 
     cpu_set_t oldcset, cset;

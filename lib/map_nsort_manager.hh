@@ -111,7 +111,6 @@ void map_nsort_manager::init(Operations* ops, uint32_t ncore) {
     ops_ = ops;
     ncore_ = ncore;
 
-    sem_init(&phase_semaphore_, 0, ncore_);
     sem_init(&nsort_buffer_semaphore_, 0, ncore_ * 10);
 
     pthread_mutex_init(&nsort_queue_mutex_, NULL);
