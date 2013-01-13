@@ -78,7 +78,6 @@ void map_cbt_manager::init(Operations* ops, uint32_t ncore, uint32_t ntree) {
     ncore_ = ncore;
     ntree_ = ntree;
 
-    sem_init(&phase_semaphore_, 0, ncore_);
     // create CBTs
     cbt_ = new cbt::CompressTree*[ntree_];
     cbt_queue_mutex_ = new pthread_mutex_t[ntree_];
@@ -194,7 +193,7 @@ void* map_cbt_manager::worker(void *x) {
     cpu_set_t cset;
     pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &cset);
 
-    while (q->empty()) {
+    while (true) {
         pthread_mutex_lock(&m->cbt_queue_mutex_[treeid]);
         pthread_cond_wait(&m->cbt_queue_empty_[treeid],
                 &m->cbt_queue_mutex_[treeid]);
@@ -224,16 +223,17 @@ void* map_cbt_manager::worker(void *x) {
 
 void map_cbt_manager::finalize() {
     uint32_t coreid = threadinfo::current()->cur_core_;
-    if (coreid >= ntree_)
-        return;
-    uint32_t treeid = coreid;
+    uint32_t treeid = coreid % ntree_;
 
     PAOArray* buf = buffered_paos_[coreid];
     uint64_t num_read;
     bool remain;
     do {
+        pthread_mutex_lock(&cbt_queue_mutex_[treeid]);
         remain = cbt_[treeid]->bulk_read(buf->list(), num_read,
                 kInsertAtOnce);
+        pthread_mutex_unlock(&cbt_queue_mutex_[treeid]);
+
         // copy results
         pthread_mutex_lock(&results_mutex_);
         results_.insert(results_.end(), &buf->list()[0],
