@@ -13,10 +13,16 @@ class ICPlainPAO : public PartialAgg
 {
     friend class ICPlainOperations;
   public:
+    struct Neighbor {
+        char img[IDLEN];
+        char hash[HASHLEN];
+    };
 	ICPlainPAO(char* wrd) : num_neighbors_(0) {
-        memset(this, 0, HASHLEN + NEIGH * IDLEN + HASHLEN * NEIGH);
+        memset(this, 0,
+                sizeof(key_) + sizeof(num_neighbors_) +
+                NEIGH * sizeof(Neighbor));
         if (wrd) {
-            strncpy(key, wrd, HASHLEN - 1);
+            strncpy(key_, wrd, HASHLEN - 1);
         }
     }
 	~ICPlainPAO() {
@@ -27,19 +33,14 @@ class ICPlainPAO : public PartialAgg
     img_hash_pair_t neighbor(uint32_t i) const {
         assert(i < num_neighbors_);
         img_hash_pair_t ih;
-        ih.img = (char*)neigh[i];
-        ih.hash = (char*)hashes[i];
+        ih.img = (char*)neigh_[i].img;
+        ih.hash = (char*)neigh_[i].hash;
         return ih;
     }
-    const char* hash(uint32_t i) const {
-        assert(i < num_neighbors_);
-        return neigh[i];
-    }
   private:
-    char key[HASHLEN];
-    char neigh[NEIGH][IDLEN];
-    char hashes[NEIGH][HASHLEN + 4];
+    char key_[HASHLEN];
     uint32_t num_neighbors_;
+    Neighbor neigh_[NEIGH];
 };
 
 class ICPlainOperations : public Operations {
@@ -49,12 +50,12 @@ class ICPlainOperations : public Operations {
     }
 
     const char* getKey(PartialAgg* p) const {
-        return ((ICPlainPAO*)p)->key;
+        return ((ICPlainPAO*)p)->key_;
     }
 
     bool setKey(PartialAgg* p, char* k) const {
         ICPlainPAO* wp = (ICPlainPAO*)p;
-        strncpy(wp->key, k, HASHLEN - 1);
+        strncpy(wp->key_, k, HASHLEN - 1);
         return true;
     }
 
@@ -65,13 +66,13 @@ class ICPlainOperations : public Operations {
     void setValue(PartialAgg* p, void* v) const {
         ICPlainPAO* wp = (ICPlainPAO*)p;
         img_hash_pair_t* ih = (img_hash_pair_t*)v;
-        strncpy(wp->neigh[0], ih->img, IDLEN - 1);
-        strncpy(wp->hashes[0], ih->hash, HASHLEN);
+        strncpy(wp->neigh_[0].img, ih->img, IDLEN - 1);
+        strncpy(wp->neigh_[0].hash, ih->hash, HASHLEN - 1);
         wp->num_neighbors_ = 1;
     }
 
     bool sameKey(PartialAgg* p1, PartialAgg* p2) const {
-        return (!strcmp(((ICPlainPAO*)p1)->key, ((ICPlainPAO*)p2)->key));
+        return (!strcmp(((ICPlainPAO*)p1)->key_, ((ICPlainPAO*)p2)->key_));
     }
 
 	size_t createPAO(Token* t, PartialAgg** p) const {
@@ -94,20 +95,20 @@ class ICPlainOperations : public Operations {
         uint32_t n = wp->num_neighbors_;
         uint32_t m = wmp->num_neighbors_;
         if (n + m > NEIGH) {
-            fprintf(stderr, "*");
             m = NEIGH - n;
         }
             
         for (uint32_t i = 0; i < m; ++i) {
-            strncpy(wp->neigh[n + i], wmp->neigh[i], IDLEN - 1);
-            strncpy(wp->hashes[n + i], wmp->hashes[i], HASHLEN);
+            wp->neigh_[n + i] = wmp->neigh_[i];
         }
         wp->num_neighbors_ += m;
         return true;
     }
 
     inline uint32_t getSerializedSize(PartialAgg* p) const {
-        return sizeof(ICPlainPAO);
+        ICPlainPAO* icp = (ICPlainPAO*)p;
+        return sizeof(icp->key_) + sizeof(uint32_t) + icp->num_neighbors_ *
+                sizeof(ICPlainPAO::Neighbor);
     }
 
     inline bool serialize(PartialAgg* p,
@@ -118,7 +119,12 @@ class ICPlainOperations : public Operations {
 
     inline bool serialize(PartialAgg* p,
             char* output, size_t size) const {
-        memcpy(output, (void*)p, sizeof(ICPlainPAO));
+        ICPlainPAO* icp = (ICPlainPAO*)p;
+        uint32_t off = sizeof(icp->key_) + sizeof(uint32_t);
+        uint32_t neigh_size = sizeof(ICPlainPAO::Neighbor) *
+                icp->num_neighbors_;
+        memcpy(output, (void*)icp, off);
+        memcpy(output + off, icp->neigh_, neigh_size);
         return true;
     }
     inline bool deserialize(PartialAgg* p,
@@ -128,7 +134,12 @@ class ICPlainOperations : public Operations {
 
     inline bool deserialize(PartialAgg* p,
             const char* input, size_t size) const {
-        memcpy((void*)p, (void*)input, sizeof(ICPlainPAO));
+        ICPlainPAO* icp = (ICPlainPAO*)p;
+        uint32_t off = sizeof(icp->key_) + sizeof(uint32_t);
+        memcpy(icp, (void*)input, off);
+        uint32_t neigh_size = sizeof(ICPlainPAO::Neighbor) *
+                icp->num_neighbors_;
+        memcpy(icp->neigh_, input + off, neigh_size);
         return true;
     }
 
