@@ -153,6 +153,8 @@ struct split_large_record {
         spl = strtok_r(str_, stop_, &saveptr1);
         str_ = NULL;
 
+        if (!spl)
+            return false;
         int l = strlen(spl);
         strncpy(k, spl, l);
         klen = l;
