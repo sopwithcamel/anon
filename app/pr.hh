@@ -82,8 +82,7 @@ class PageRankOperations : public Operations {
     }
 
     inline uint32_t getSerializedSize(PartialAgg* p) const {
-        PageRankPAO* wp = (PageRankPAO*)p;
-        return KEYLEN + sizeof(PageRankPAO::PRValue) + 1;
+        return sizeof(PageRankPAO);
     }
 
     inline bool serialize(PartialAgg* p,
@@ -94,8 +93,7 @@ class PageRankOperations : public Operations {
     inline bool serialize(PartialAgg* p,
             char* output, size_t size) const {
         PageRankPAO* wp = (PageRankPAO*)p;
-        memcpy(output, &wp, sizeof(uint32_t));
-        strcpy(&output[sizeof(uint32_t)], wp->key);
+        memcpy(output, wp, sizeof(PageRankPAO));
         return true;
     }
     inline bool deserialize(PartialAgg* p,
@@ -106,8 +104,7 @@ class PageRankOperations : public Operations {
     inline bool deserialize(PartialAgg* p,
             const char* input, size_t size) const {
         PageRankPAO* wp = (PageRankPAO*)p;
-        memcpy(&wp->pr, input, sizeof(uint32_t));
-        strcpy(wp->key, &input[sizeof(uint32_t)]);
+        memcpy(wp, input, sizeof(PageRankPAO));
         return true;
     }
 
