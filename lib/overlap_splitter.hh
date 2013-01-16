@@ -105,4 +105,87 @@ bool overlap_splitter::split(split_t *ma, int ncores, const char *stop, size_t a
     return true;
 }
 
+struct large_overlap_splitter {
+    large_overlap_splitter(char *d, size_t size, size_t nsplit)
+        : d_(d), size_(size), nsplit_(nsplit), pos_(0),
+            overlap_(8388608) {
+    }
+    large_overlap_splitter(const char *f, size_t nsplit) :
+            f_(NULL), nsplit_(nsplit), pos_(0), overlap_(8388608) {
+        f_ = fopen(f, "r");
+        assert(f_);
+        fseek(f_, 0, SEEK_END);
+        size_ = ftell(f_);
+        rewind(f_);
+
+        pthread_mutex_init(&flock_, NULL);
+    }
+    ~large_overlap_splitter() {
+        fclose(f_);
+        pthread_mutex_destroy(&flock_);
+    }
+    size_t overlap() const {
+        return overlap_;
+    }
+    bool get_split_chunk(split_t* ma);
+    bool split(split_t *ma, int ncore, const char *stop, size_t align = 0);
+    size_t size() const {
+        return size_;
+    }
+
+  private:
+    FILE* f_;
+    pthread_mutex_t flock_;
+    char *d_;
+    size_t size_;
+    int nsplit_;
+    size_t pos_;
+    const size_t overlap_;
+};
+
+bool large_overlap_splitter::get_split_chunk(split_t* ma) {
+    if (ma->chunk_end_offset >= ma->split_end_offset)
+        return false;
+    pthread_mutex_lock(&flock_);
+    // seek to end of current chunk
+    fseek(f_, ma->chunk_end_offset, SEEK_SET);
+    // read in buffer
+    size_t read_length = std::min(ma->kBufferSize,
+            ma->split_end_offset - ma->chunk_end_offset);
+    size_t ret = fread(ma->data, sizeof(char), read_length, f_);
+    pthread_mutex_unlock(&flock_);
+    if (ret != read_length) {
+        perror("fread");
+        assert(false);
+    }
+    ma->chunk_start_offset = ma->chunk_end_offset;
+    ma->chunk_end_offset += read_length;
+    return true;
+}
+
+bool large_overlap_splitter::split(split_t *ma, int ncores,
+        const char *stop, size_t align) {
+    // ensure that max is at least 1
+    int max = std::max((size_t)1, size_ >> 12); // divide by 4096
+    if (nsplit_ > max) {
+        nsplit_ = max;
+    }
+    if (nsplit_ == 0)
+        nsplit_ = std::min(max, ncores * def_nsplits_per_core);
+    if (pos_ >= size_)
+        return false;
+    size_t req_length = size_ / nsplit_ + 1;
+    size_t length = std::min(size_ - pos_, req_length);
+
+    ma->split_start_offset = ma->chunk_start_offset = ma->chunk_end_offset = pos_;
+    ma->split_end_offset = pos_ + length;
+    pos_ += length;
+    if (size_ - pos_ > 0) { // if not last chunk, add overlap
+        ma->split_end_offset += overlap_;
+    }
+
+    get_split_chunk(ma);
+    return true;
+}
+
 #endif

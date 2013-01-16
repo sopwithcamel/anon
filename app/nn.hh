@@ -6,75 +6,7 @@
 #include "appbase.hh"
 #include "ic.hh"
 #include "nn_plain.h"
-
-struct split_ic {
-    split_ic(split_t *ma, size_t overlap) :
-            ma_(ma), len_(0),
-            bytewise_(false),
-            overlap_(overlap) {
-        assert(ma_ && ma_->data);
-        str_ = ma_->data;
-
-        // if it is not the first split, then move forward until we hit a
-        // newline
-        if (ma_->split_start_offset > 0) {
-            for (; *str_ != '\n'; ++str_);
-            ++str_;
-        }
-    }
-
-    bool fill(char *k, size_t maxlen, size_t &klen) {
-        char* spl;
-        size_t chunk_length = ma_->chunk_end_offset -
-            ma_->chunk_start_offset;
-
-        if (bytewise_) {
-            char *d = ma_->data;
-            klen = 0;
-            // skip over non-interesting items
-            for (; len_ < chunk_length && !isalnum(d[len_]); ++len_);
-
-            // copy interesting letters
-            for (; len_ < chunk_length && isalnum(d[len_]); ++len_) {
-                k[klen++] = d[len_];
-            }
-            k[klen] = 0;
-            if (len_ + overlap_ > chunk_length) {
-                // we return false after finding the first newline in the
-                // overlap area
-                if (d[len_] == '\n')
-                    return false;
-            }
-            return true;
-        }
-
-        const char* stop = " \t\n";
-
-        // split
-        spl = strtok_r(str_, stop, &saveptr1);
-        str_ = NULL;
-
-        int l = strlen(spl);
-        strncpy(k, spl, l);
-        klen = l;
-
-        // if we're close to the overlap zone, switch to bytewise (and
-        // non-modifying) mode
-        if (spl + overlap_ + maxlen > ma_->data + chunk_length) {
-            bytewise_ = true;
-            len_ = (spl - ma_->data) + klen;
-        }
-        return true;
-    }
-
-  private:
-    split_t* ma_;
-    char* str_;
-    char* saveptr1;
-    size_t len_;
-    bool bytewise_;
-    size_t overlap_;
-};
+#include "tokenizers.hh"
 
 struct img_cluster : public mapreduce_appbase {
     img_cluster(const char *f, int nsplit) : s_(f, nsplit) {}
@@ -95,7 +27,7 @@ struct img_cluster : public mapreduce_appbase {
         bool not_empty = true;
         img_hash_pair_t* p = new img_hash_pair_t();
         do {
-            split_ic sd(ma, s_.overlap());
+            split_record sd(ma, s_.overlap(), " \t\n");
             do {
                 not_empty = sd.fill(k, 64, klen);
                 // terminate string
