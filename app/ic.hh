@@ -9,20 +9,21 @@ typedef struct {
     char* hash;
 } img_hash_pair_t;
 
+struct Neighbor {
+    char img[IDLEN];
+    char hash[HASHLEN];
+};
+
+struct ICValue {
+    uint32_t num_neighbors_;
+    Neighbor neigh_[NEIGH];
+};
+
+
 class ICPlainPAO : public PartialAgg
 {
     friend class ICPlainOperations;
   public:
-    struct Neighbor {
-        char img[IDLEN];
-        char hash[HASHLEN];
-    };
-
-    struct ICValue {
-        uint32_t num_neighbors_;
-        Neighbor neigh_[NEIGH];
-    };
-
 	ICPlainPAO(char* wrd) {
         memset(this, 0,
                 sizeof(key_) + sizeof(uint32_t) +
@@ -71,7 +72,7 @@ class ICPlainOperations : public Operations {
 
     void setValue(PartialAgg* p, void* v) const {
         ICPlainPAO* wp = (ICPlainPAO*)p;
-        ICPlainPAO::ICValue* icv = (ICPlainPAO::ICValue*)v;
+        ICValue* icv = (ICValue*)v;
         wp->value_.num_neighbors_ = icv->num_neighbors_;
         for (uint32_t i = 0; i < icv->num_neighbors_; ++i) {
             wp->value_.neigh_[i] = icv->neigh_[i];
@@ -97,8 +98,8 @@ class ICPlainOperations : public Operations {
     }
 
 	bool merge(PartialAgg* p, PartialAgg* mg) const {
-        ICPlainPAO::ICValue* pv = &((ICPlainPAO*)p)->value_;
-        ICPlainPAO::ICValue* mv = &((ICPlainPAO*)mg)->value_;
+        ICValue* pv = &((ICPlainPAO*)p)->value_;
+        ICValue* mv = &((ICPlainPAO*)mg)->value_;
         uint32_t n = pv->num_neighbors_;
         uint32_t m = mv->num_neighbors_;
         if (n + m > NEIGH) {
@@ -116,7 +117,7 @@ class ICPlainOperations : public Operations {
         ICPlainPAO* icp = (ICPlainPAO*)p;
         return sizeof(icp->key_) + sizeof(uint32_t) +
                 icp->value_.num_neighbors_ *
-                sizeof(ICPlainPAO::Neighbor);
+                sizeof(Neighbor);
     }
 
     inline bool serialize(PartialAgg* p,
@@ -129,7 +130,7 @@ class ICPlainOperations : public Operations {
             char* output, size_t size) const {
         ICPlainPAO* icp = (ICPlainPAO*)p;
         uint32_t off = sizeof(icp->key_) + sizeof(uint32_t);
-        uint32_t neigh_size = sizeof(ICPlainPAO::Neighbor) *
+        uint32_t neigh_size = sizeof(Neighbor) *
                 icp->value_.num_neighbors_;
         memcpy(output, (void*)icp, off);
         memcpy(output + off, icp->value_.neigh_, neigh_size);
@@ -145,7 +146,7 @@ class ICPlainOperations : public Operations {
         ICPlainPAO* icp = (ICPlainPAO*)p;
         uint32_t off = sizeof(icp->key_) + sizeof(uint32_t);
         memcpy(icp, (void*)input, off);
-        uint32_t neigh_size = sizeof(ICPlainPAO::Neighbor) *
+        uint32_t neigh_size = sizeof(Neighbor) *
                 icp->value_.num_neighbors_;
         memcpy(icp->value_.neigh_, input + off, neigh_size);
         return true;

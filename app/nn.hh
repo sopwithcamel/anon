@@ -26,7 +26,7 @@ struct img_cluster : public mapreduce_appbase {
         int num_rot = hash_len / step;
         bool not_empty = true;
         img_hash_pair_t* p = new img_hash_pair_t();
-        ICPlainPAO::ICValue* ic_value = new ICPlainPAO::ICValue();
+        ICValue* ic_value = new ICValue();
         do {
             split_record sd(ma, s_.overlap(), " \t\n");
             do {
