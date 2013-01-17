@@ -17,9 +17,15 @@ class ICPlainPAO : public PartialAgg
         char img[IDLEN];
         char hash[HASHLEN];
     };
-	ICPlainPAO(char* wrd) : num_neighbors_(0) {
+
+    struct ICValue {
+        uint32_t num_neighbors_;
+        Neighbor neigh_[NEIGH];
+    };
+
+	ICPlainPAO(char* wrd) {
         memset(this, 0,
-                sizeof(key_) + sizeof(num_neighbors_) +
+                sizeof(key_) + sizeof(uint32_t) +
                 NEIGH * sizeof(Neighbor));
         if (wrd) {
             strncpy(key_, wrd, HASHLEN - 1);
@@ -28,19 +34,18 @@ class ICPlainPAO : public PartialAgg
 	~ICPlainPAO() {
     }
     uint32_t num_neighbors() const {
-        return num_neighbors_;
+        return value_.num_neighbors_;
     }
     img_hash_pair_t neighbor(uint32_t i) const {
-        assert(i < num_neighbors_);
+        assert(i < value_.num_neighbors_);
         img_hash_pair_t ih;
-        ih.img = (char*)neigh_[i].img;
-        ih.hash = (char*)neigh_[i].hash;
+        ih.img = (char*)value_.neigh_[i].img;
+        ih.hash = (char*)value_.neigh_[i].hash;
         return ih;
     }
   private:
     char key_[HASHLEN];
-    uint32_t num_neighbors_;
-    Neighbor neigh_[NEIGH];
+    ICValue value_;
 };
 
 class ICPlainOperations : public Operations {
@@ -60,15 +65,17 @@ class ICPlainOperations : public Operations {
     }
 
     void* getValue(PartialAgg* p) const {
-        assert(false && "Not implemented yet");
+        ICPlainPAO* icp = (ICPlainPAO*)p;
+        return &(icp->value_);
     }
 
     void setValue(PartialAgg* p, void* v) const {
         ICPlainPAO* wp = (ICPlainPAO*)p;
-        img_hash_pair_t* ih = (img_hash_pair_t*)v;
-        strncpy(wp->neigh_[0].img, ih->img, IDLEN - 1);
-        strncpy(wp->neigh_[0].hash, ih->hash, HASHLEN - 1);
-        wp->num_neighbors_ = 1;
+        ICPlainPAO::ICValue* icv = (ICPlainPAO::ICValue*)v;
+        wp->value_.num_neighbors_ = icv->num_neighbors_;
+        for (uint32_t i = 0; i < icv->num_neighbors_; ++i) {
+            wp->value_.neigh_[i] = icv->neigh_[i];
+        }
     }
 
     bool sameKey(PartialAgg* p1, PartialAgg* p2) const {
@@ -90,24 +97,25 @@ class ICPlainOperations : public Operations {
     }
 
 	bool merge(PartialAgg* p, PartialAgg* mg) const {
-        ICPlainPAO* wp = (ICPlainPAO*)p;
-        ICPlainPAO* wmp = (ICPlainPAO*)mg;
-        uint32_t n = wp->num_neighbors_;
-        uint32_t m = wmp->num_neighbors_;
+        ICPlainPAO::ICValue* pv = &((ICPlainPAO*)p)->value_;
+        ICPlainPAO::ICValue* mv = &((ICPlainPAO*)mg)->value_;
+        uint32_t n = pv->num_neighbors_;
+        uint32_t m = mv->num_neighbors_;
         if (n + m > NEIGH) {
             m = NEIGH - n;
         }
             
         for (uint32_t i = 0; i < m; ++i) {
-            wp->neigh_[n + i] = wmp->neigh_[i];
+            pv->neigh_[n + i] = mv->neigh_[i];
         }
-        wp->num_neighbors_ += m;
+        pv->num_neighbors_ += m;
         return true;
     }
 
     inline uint32_t getSerializedSize(PartialAgg* p) const {
         ICPlainPAO* icp = (ICPlainPAO*)p;
-        return sizeof(icp->key_) + sizeof(uint32_t) + icp->num_neighbors_ *
+        return sizeof(icp->key_) + sizeof(uint32_t) +
+                icp->value_.num_neighbors_ *
                 sizeof(ICPlainPAO::Neighbor);
     }
 
@@ -122,9 +130,9 @@ class ICPlainOperations : public Operations {
         ICPlainPAO* icp = (ICPlainPAO*)p;
         uint32_t off = sizeof(icp->key_) + sizeof(uint32_t);
         uint32_t neigh_size = sizeof(ICPlainPAO::Neighbor) *
-                icp->num_neighbors_;
+                icp->value_.num_neighbors_;
         memcpy(output, (void*)icp, off);
-        memcpy(output + off, icp->neigh_, neigh_size);
+        memcpy(output + off, icp->value_.neigh_, neigh_size);
         return true;
     }
     inline bool deserialize(PartialAgg* p,
@@ -138,8 +146,8 @@ class ICPlainOperations : public Operations {
         uint32_t off = sizeof(icp->key_) + sizeof(uint32_t);
         memcpy(icp, (void*)input, off);
         uint32_t neigh_size = sizeof(ICPlainPAO::Neighbor) *
-                icp->num_neighbors_;
-        memcpy(icp->neigh_, input + off, neigh_size);
+                icp->value_.num_neighbors_;
+        memcpy(icp->value_.neigh_, input + off, neigh_size);
         return true;
     }
 
