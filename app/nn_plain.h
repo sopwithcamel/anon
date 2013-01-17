@@ -6,21 +6,22 @@ class NNPlainPAO : public PartialAgg
 {
     friend class NNPlainOperations;
   public:
+    struct NNValue {
+        char nn[IDLEN];
+        uint32_t hamming_dist;
+    };
+
 	NNPlainPAO(char* wrd) {
         memset(key, 0, IDLEN);
         if (wrd) {
             strncpy(key, wrd, IDLEN - 1);
-            hamming_dist = 1;
-        } else {
-            hamming_dist = 1;
-        }    
+        }
     }
 	~NNPlainPAO() {
     }
   private:
     char key[IDLEN];
-    char nn[IDLEN];
-    uint32_t hamming_dist;
+    NNValue value_;
 };
 
 typedef struct {
@@ -47,14 +48,14 @@ class NNPlainOperations : public Operations {
 
     void* getValue(PartialAgg* p) const {
         NNPlainPAO* wp = (NNPlainPAO*)p;
-        return (void*)(wp->nn);
+        return &(wp->value_);
     }
 
     void setValue(PartialAgg* p, void* v) const {
         NNPlainPAO* wp = (NNPlainPAO*)p;
-        img_dist_pair_t* id = (img_dist_pair_t*)v;
-        strncpy(wp->nn, id->img, IDLEN - 1);
-        wp->hamming_dist = id->dist;
+        NNPlainPAO::NNValue* nnv = (NNPlainPAO::NNValue*)v;
+        strncpy(wp->value_.nn, nnv->nn, IDLEN - 1);
+        wp->value_.hamming_dist = nnv->hamming_dist;
     }
 
     bool sameKey(PartialAgg* p1, PartialAgg* p2) const {
@@ -78,8 +79,8 @@ class NNPlainOperations : public Operations {
 	bool merge(PartialAgg* p, PartialAgg* mg) const {
         NNPlainPAO* wp = (NNPlainPAO*)p;
         NNPlainPAO* wmp = (NNPlainPAO*)mg;
-        if (wp->hamming_dist > wmp->hamming_dist)
-            wp->hamming_dist = wmp->hamming_dist;
+        if (wp->value_.hamming_dist > wmp->value_.hamming_dist)
+            wp->value_.hamming_dist = wmp->value_.hamming_dist;
         return true;
     }
 

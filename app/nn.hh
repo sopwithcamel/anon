@@ -26,16 +26,17 @@ struct img_cluster : public mapreduce_appbase {
         int num_rot = hash_len / step;
         bool not_empty = true;
         img_hash_pair_t* p = new img_hash_pair_t();
+        ICPlainPAO::ICValue* ic_value = new ICPlainPAO::ICValue();
         do {
             split_record sd(ma, s_.overlap(), " \t\n");
             do {
                 not_empty = sd.fill(k, 64, klen);
                 // terminate string
                 k[klen] = '\0';
+                assert(klen < IDLEN);
                 assert(not_empty); // can't end after key
                 not_empty = sd.fill(v, 64, vlen);
-                if (++kc % 100000 == 0)
-                    fprintf(stderr, ".");
+                assert(vlen >= 10);
                 if (vlen < hash_len) {
                     int d = hash_len - vlen;
                     for (int i = hash_len - 1; i >= d; --i)
@@ -53,15 +54,16 @@ struct img_cluster : public mapreduce_appbase {
                         rotv[j] = v[(st + j) % hash_len];
                         ++j;
                     } while (j < prefix_len);
-                    p->img = k;
-                    p->hash = v;
-                    map_emit(rotv, (void*)p, prefix_len);
+                    ic_value->num_neighbors_ = 1;
+                    strcpy(ic_value->neigh_[0].img, k);
+                    strcpy(ic_value->neigh_[0].hash, v);
+                    map_emit(rotv, (void*)ic_value, prefix_len);
                 }
                 memset(k, 0, klen);
                 memset(v, 0, vlen);
             } while(not_empty);
         } while (s_.get_split_chunk(ma));
-        delete p;
+        delete ic_value;
     }
     bool result_compare(const char* k1, const void* v1, 
             const char* k2, const void* v2) {
@@ -108,7 +110,7 @@ struct nearest_neighbor : public mapreduce_appbase {
     }
 
     void map_function(split_t *ma) {
-        img_dist_pair_t* id = new img_dist_pair_t();
+        NNPlainPAO::NNValue* nnv = new NNPlainPAO::NNValue();
         for (uint32_t i = ma->split_start_offset;
                 i < ma->split_end_offset; ++i) {
             ICPlainPAO* p = (ICPlainPAO*)input_[i];
@@ -120,13 +122,13 @@ struct nearest_neighbor : public mapreduce_appbase {
                     if (j == k) continue;
                     img_hash_pair_t ih1 = p->neighbor(j);
                     img_hash_pair_t ih2 = p->neighbor(k);
-                    id->img = ih2.img;
-                    id->dist = hamming_distance(ih1.hash, ih2.hash);
-                    map_emit(ih1.img, id, IDLEN - 1);
+                    strncpy(nnv->nn, ih2.img, IDLEN - 1);
+                    nnv->hamming_dist = hamming_distance(ih1.hash, ih2.hash);
+                    map_emit(ih1.img, nnv, IDLEN - 1);
                 }
             }
         }
-        delete id;
+        delete nnv;
     }
 
     bool result_compare(const char* k1, const void* v1, 
