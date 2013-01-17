@@ -83,7 +83,7 @@ void map_cbt_manager::init(Operations* ops, uint32_t ncore, uint32_t ntree) {
     cbt_queue_mutex_ = new pthread_mutex_t[ntree_];
     cbt_queue_empty_ = new pthread_cond_t[ntree_];
 
-    uint32_t fanout = 8;
+    uint32_t fanout = 64;
     uint32_t buffer_size = 125829120;// 31457280;
     uint32_t pao_size = 64;
     for (uint32_t j = 0; j < ntree_; ++j) {
@@ -225,7 +225,7 @@ void map_cbt_manager::finalize() {
     uint32_t coreid = threadinfo::current()->cur_core_;
     uint32_t treeid = coreid % ntree_;
 
-    PAOArray* buf = buffered_paos_[coreid];
+    PAOArray* buf = bufpool_->get_buffer();
     uint64_t num_read;
     bool remain;
     do {
