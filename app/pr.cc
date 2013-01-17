@@ -61,10 +61,14 @@ struct pr : public mapreduce_appbase {
                 } while (spl);
                 // create a PAO for the followed
                 v.rank = 0;
+/*
                 v.num_neigh = neighbor_ctr;
                 v.neigh = (char*)malloc(v.num_neigh * KEYLEN);
                 for (uint32_t i = 0; i < v.num_neigh; ++i)
                     strcpy(v.neigh + i * KEYLEN, neigh_ptrs[i]);
+*/
+                v.num_neigh = 0;
+                v.neigh = NULL;
                 map_emit(k, &v, klen);
 
                 // emit PAOs for each of the followers

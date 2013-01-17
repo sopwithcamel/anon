@@ -96,6 +96,7 @@ class PageRankOperations : public Operations {
         memcpy(output, wp, sizeof(PageRankPAO));
         return true;
     }
+
     inline bool deserialize(PartialAgg* p,
             const std::string& input) const {
         return true;
