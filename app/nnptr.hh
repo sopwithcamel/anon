@@ -4,7 +4,7 @@
 #include <algorithm>
 #include "overlap_splitter.hh"
 #include "appbase.hh"
-#include "ic.hh"
+#include "icptr.hh"
 #include "nn_plain.h"
 #include "tokenizers.hh"
 
@@ -27,6 +27,8 @@ struct img_cluster : public mapreduce_appbase {
         bool not_empty = true;
         img_hash_pair_t* p = new img_hash_pair_t();
         ICValue* ic_value = new ICValue();
+        ic_value->neigh_[0].img = (char*)malloc(IDLEN);
+        ic_value->neigh_[0].hash = (char*)malloc(HASHLEN);
         do {
             split_record sd(ma, s_.overlap(), " \t\n");
             do {
@@ -79,14 +81,21 @@ struct img_cluster : public mapreduce_appbase {
 };
 
 struct nearest_neighbor : public mapreduce_appbase {
-    nearest_neighbor(map_manager* m, int nsplit) :
-            m_(m), nsplit_(nsplit), cur_split_(0) {
+    nearest_neighbor(const std::vector<PartialAgg*>& input, int nsplit) :
+            input_(input), nsplit_(nsplit), pos_(0) {
+        input_size_ = input_.size();
     }
 
     bool split(split_t *ma, int ncores) {
-        assert(nsplit_ > 0);
-        if (cur_split_++ == nsplit_)
+        if (nsplit_ == 0)
+            nsplit_ = ncores * def_nsplits_per_core;
+        if (pos_ >= input_size_)
             return false;
+        size_t req_units = input_size_ / nsplit_;
+        size_t length = std::min(input_size_ - pos_, req_units);
+        ma->split_start_offset = pos_;
+        ma->split_end_offset = pos_ + length;
+        pos_ += length;
         return true;
     }
 
@@ -103,33 +112,24 @@ struct nearest_neighbor : public mapreduce_appbase {
     }
 
     void map_function(split_t *ma) {
-        // create buffer for fetching PAOs
-        uint64_t buf_size = 100000;
-        uint64_t num_read;
-        PartialAgg** buf = new PartialAgg*[buf_size];
-        
         NNPlainPAO::NNValue* nnv = new NNPlainPAO::NNValue();
-        bool ret;
-        do {
-            ret = m_->get_paos(buf, num_read, buf_size);
-            for (uint32_t i = 0; i < num_read; ++i) {
-                ICPlainPAO* p = (ICPlainPAO*)buf[i];
-                uint32_t n = p->num_neighbors();
-                if (n > 1) {
-                    for (uint32_t j = 0; j < n; ++j) {
-                        for (uint32_t k = 0; k < n; ++k) {
-                            if (j == k) continue;
-                            img_hash_pair_t ih1 = p->neighbor(j);
-                            img_hash_pair_t ih2 = p->neighbor(k);
-                            strncpy(nnv->nn, ih2.img, IDLEN - 1);
-                            nnv->hamming_dist = hamming_distance(ih1.hash, ih2.hash);
-                            map_emit(ih1.img, nnv, IDLEN - 1);
-                        }
-                    }
+        for (uint32_t i = ma->split_start_offset;
+                i < ma->split_end_offset; ++i) {
+            ICPtrPAO* p = (ICPtrPAO*)input_[i];
+            uint32_t n = p->num_neighbors();
+            if (n == 1)
+                continue;
+            for (uint32_t j = 0; j < n; ++j) {
+                for (uint32_t k = 0; k < n; ++k) {
+                    if (j == k) continue;
+                    img_hash_pair_t ih1 = p->neighbor(j);
+                    img_hash_pair_t ih2 = p->neighbor(k);
+                    strncpy(nnv->nn, ih2.img, IDLEN - 1);
+                    nnv->hamming_dist = hamming_distance(ih1.hash, ih2.hash);
+                    map_emit(ih1.img, nnv, IDLEN - 1);
                 }
-                m_->ops()->destroyPAO(p);
             }
-        } while (ret);
+        }
         delete nnv;
     }
 
@@ -144,12 +144,11 @@ struct nearest_neighbor : public mapreduce_appbase {
         fprintf(f, "%15s - %15s\n", key, (char*)v);
     }
 
+    const std::vector<PartialAgg*>& input_;
     int nsplit_;
-    map_manager* m_;
-    // mutex for 
-    pthread_mutex_t mm_mutex_;
-    // tracks number of splits during split generation
-    int cur_split_;
+    // tracks position during split generation
+    size_t pos_;
+    size_t input_size_;
 };
 
 #endif  // NN_HH_

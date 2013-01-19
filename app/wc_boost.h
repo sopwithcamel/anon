@@ -4,8 +4,13 @@
 class WCBoostPAO : public PartialAgg {
     friend class WCBoostOperations;
   public:
-	WCBoostPAO() {}
-	~WCBoostPAO() {}
+	WCBoostPAO() : key(NULL) {}
+	~WCBoostPAO() {
+        if (key) {
+            free(key);
+            key = NULL;
+        }
+    }
   private:
     char* key;
     uint32_t count;
@@ -24,6 +29,10 @@ class WCBoostOperations : public Operations {
 
     bool setKey(PartialAgg* p, char* k) const {
         WCBoostPAO* wp = (WCBoostPAO*)p;
+        if (wp->key) {
+            free(wp->key);
+            wp->key = NULL;
+        }
         wp->key = (char*)malloc(strlen(k) + 1);
         strcpy(wp->key, k);
         return true;

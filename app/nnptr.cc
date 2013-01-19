@@ -14,7 +14,7 @@
 #include <sys/time.h>
 #include <sched.h>
 #include "bench.hh"
-#include "nn.hh"
+#include "nnptr.hh"
 
 #define DEFAULT_NDISP 10
 
@@ -76,21 +76,20 @@ int main(int argc, char *argv[]) {
     img_cluster ic(fn, map_tasks);
     ic.set_ncore(nprocs);
     ic.set_ntrees(ntrees);
-    Operations* ic_ops = new ICPlainOperations();
+    Operations* ic_ops = new ICPtrOperations();
     ic.set_ops(ic_ops);
     ic.set_skip_results_processing(true);
-    ic.set_skip_finalize(true);
     ic.sched_run();
     fprintf(stderr, "IC produced %ld keys\n", ic.results().size());
 
     // run brute-force nn within clusters
-    nearest_neighbor nn(ic.get_map_manager(), map_tasks);
+    nearest_neighbor nn(ic.results(), map_tasks);
     nn.set_ncore(nprocs);
     nn.set_ntrees(ntrees);
     Operations* nn_ops = new NNPlainOperations();
     nn.set_ops(nn_ops);
     // no need to sort results
-    nn.set_skip_results_processing(true);
+    ic.set_skip_results_processing(true);
     nn.sched_run();
 
     // get the number of results to display

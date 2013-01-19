@@ -17,8 +17,18 @@ env.Program('dg', ['dg.cc'],
         LIBS = app_libs,
         LIBPATH = '../lib')
 
+# kmer counting
+env.Program('kmer', ['kmer.cc'],
+        LIBS = app_libs,
+        LIBPATH = '../lib')
+
 # Nearest neighbors
 env.Program('nn', ['nn.cc'],
+        LIBS = app_libs,
+        LIBPATH = '../lib')
+
+# Nearest neighbors (pointer version)
+env.Program('nnptr', ['nnptr.cc'],
         LIBS = app_libs,
         LIBPATH = '../lib')
 
