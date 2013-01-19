@@ -57,6 +57,9 @@ struct map_manager {
     virtual void flush_buffered_paos() {}
     virtual void finish_phase(int phase) {}
     virtual void finalize() {}
+    virtual bool get_paos(PartialAgg** buf, uint64_t& num_read, uint64_t max) {
+        assert(false && "Implement this if you want to use it");
+    }
 
   protected:
     bool link_user_map(const std::string& soname) {
@@ -166,6 +169,12 @@ struct mapreduce_appbase {
     void set_skip_results_processing(bool val) {
         skip_results_processing_ = val;
     }
+    void set_skip_finalize(bool val) {
+        skip_finalize_ = val;
+    }
+    map_manager* get_map_manager() {
+        return m_;
+    }
 
     /* internal use only */
   protected:
@@ -192,6 +201,7 @@ struct mapreduce_appbase {
     bool clean_;
 
     bool skip_results_processing_;
+    bool skip_finalize_;
     
     int next_task() {
         return atomic_add32_ret(&next_task_);

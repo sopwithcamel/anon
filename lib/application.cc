@@ -52,6 +52,7 @@ mapreduce_appbase::mapreduce_appbase()
       total_map_time_(), total_finalize_time_(),
       total_real_time_(), clean_(true),
       skip_results_processing_(true),
+      skip_finalize_(false),
       next_task_(), phase_(), m_(NULL) {
 }
 
@@ -203,26 +204,28 @@ int mapreduce_appbase::sched_run() {
     mthread_finalize();
     
     // finalize phase
-    uint32_t num_finalize_workers;
-    switch(AGG_DS) {
-        case 0: // CBT
-            num_finalize_workers = ntree_ * 2;
-            break;
-        case 1: // HTC
-            num_finalize_workers = ncore_;
-            break;
-        case 2: // SH
-            num_finalize_workers = ntree_;
-            break;
-        case 3: // nsort
-            num_finalize_workers = ncore_;
-            break;
-    }
-    mthread_init(num_finalize_workers);
-    run_phase(FINALIZE, num_finalize_workers, finalize_time);
-    mthread_finalize();
+    if (!skip_finalize_) {
+        uint32_t num_finalize_workers;
+        switch(AGG_DS) {
+            case 0: // CBT
+                num_finalize_workers = ntree_ * 2;
+                break;
+            case 1: // HTC
+                num_finalize_workers = ncore_;
+                break;
+            case 2: // SH
+                num_finalize_workers = ntree_;
+                break;
+            case 3: // nsort
+                num_finalize_workers = ncore_;
+                break;
+        }
+        mthread_init(num_finalize_workers);
+        run_phase(FINALIZE, num_finalize_workers, finalize_time);
+        mthread_finalize();
 
-    fprintf(stderr, "Results has %u elements\n", m_->results_.size());
+        fprintf(stderr, "Results has %u elements\n", m_->results_.size());
+    }
     if (!skip_results_processing_)
         set_final_result();
     total_map_time_ += map_time;
