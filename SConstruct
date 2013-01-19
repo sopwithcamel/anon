@@ -11,8 +11,9 @@ common_env = Environment()
 common_env['CXX'] = 'gccfilter -c -a g++'
 common_env.Append(CCFLAGS = ['-g', '-O3', '-Wall'],
         CPPFLAGS = [ncpu_opt,
-        '-DJOS_CLINE=64', '-DCACHE_LINE_SIZE=64', '-D__STDC_FORMAT_MACROS',
-        '-I.', '-Ilib/', '-I/usr/local/include/cbt'])
+        '-DJOS_CLINE=64', '-DCACHE_LINE_SIZE=64', '-D__STDC_FORMAT_MACROS'],
+        CPPPATH = ['#.', '#lib/', '/usr/local/include/cbt'])
+
 cbt_env = common_env.Clone()
 cbt_env.Append(CPPFLAGS='-DAGG_DS=0')
 cbt_env.VariantDir('obj/cbt', '.', duplicate=0)
