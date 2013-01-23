@@ -73,8 +73,9 @@ class WCBoostOperations : public Operations {
     }
 
     inline uint32_t getSerializedSize(PartialAgg* p) const {
-        assert(false && "Not implemented yet");
-        return 0;
+        WCBoostPAO* wp = (WCBoostPAO*)p;
+        int l = strlen(wp->key);
+        return l + 5;
     }
 
     inline bool serialize(PartialAgg* p, std::string* output) const {
@@ -83,8 +84,12 @@ class WCBoostOperations : public Operations {
     }
 
     inline bool serialize(PartialAgg* p, char* output, size_t size) const {
-        assert(false && "Not implemented yet");
-        return false;
+        WCBoostPAO* wp = (WCBoostPAO*)p;
+        int l = strlen(wp->key);
+        memcpy(output, wp->key, l);
+        output[l] = 0;
+        memcpy(output + l + 1, &(wp->count), sizeof(uint32_t));
+        return true;
     }
 
     inline bool deserialize(PartialAgg* p, const std::string& input) const {
@@ -94,8 +99,12 @@ class WCBoostOperations : public Operations {
 
     inline bool deserialize(PartialAgg* p, const char* input,
             size_t size) const {
-        assert(false && "Not implemented yet");
-        return false;
+        WCBoostPAO* wp = (WCBoostPAO*)p;
+        int l = strlen(input);
+        wp->key = (char*)malloc(l + 1);
+        strcpy(wp->key, input);
+        memcpy(&(wp->count), input + l + 1, sizeof(uint32_t));
+        return true;
     }
 
   private:
