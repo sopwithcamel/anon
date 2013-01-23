@@ -173,7 +173,7 @@ void map_nsort_manager::submit_array(PAOArray* buf) {
     pthread_mutex_lock(&nsort_queue_mutex_);
     nsort_queue_.push_back(nbuf);
     pthread_cond_signal(&nsort_queue_empty_);
-    fprintf(stderr, "qs: %d\t", nsort_queue_.size());
+//    fprintf(stderr, "qs: %d\t", nsort_queue_.size());
     pthread_mutex_unlock(&nsort_queue_mutex_);
 
     // return buffer to pool immediately
@@ -239,7 +239,7 @@ void* map_nsort_manager::worker(void *x) {
     // first field. The separator is actually supposed to separate _fields_ in
     // a record as well, but we can't handle this right now. I think it should
     // be ok if it sorts using a concatenation of the key and the value
-    err = nsort_define("-format:sep='\n' -key:pos=1 -processes=8 -temp_file=/localfs/hamur",
+    err = nsort_define("-format:sep='\n' -key:pos=1 -processes=8 -temp_file=/localfs/hamur -statistics",
             0, NULL, &m->nsort_context_);
     if (err < 0)
         m->error_exit("nsort_define()", err, m->nsort_context_);
@@ -293,7 +293,6 @@ void map_nsort_manager::finalize() {
     for (uint32_t i = 0; i < nbuf->kMaxLists; ++i)
         nbuf->add_buf();
 
-/*
     bool more_results = true;
     do {
         // get results from nsort
@@ -301,22 +300,27 @@ void map_nsort_manager::finalize() {
         // check if all results have been read
         if (!nsort_all_results_read_) {
             int err;
-            size_t retsize = nbuf->kBufferSize;
             // read results from nsort
-            if ((err = nsort_return_recs(nbuf->buf(), &retsize,
-                    &nsort_context_)) < 0)
-                error_exit("nsort_return_recs()", err, nsort_context_);
-            nbuf->set_size(retsize);
+            for (uint32_t i = 0; i < nbuf->kMaxLists; ++i) {
+                nsort_buffer::ns_list* ns = nbuf->bufs_[i];
+                ns->s = nbuf->kBufferSize;
+                if ((err = nsort_return_recs(&(ns->l), (size_t*)&(ns->s),
+                                &nsort_context_)) < 0)
+                    error_exit("nsort_return_recs()", err, nsort_context_);
+            }
 
             if (err == NSORT_END_OF_OUTPUT) {
                 nsort_all_results_read_ = true;
+                fprintf(stderr, "%s\n", nsort_get_stats(&nsort_context_));
                 nsort_end(&nsort_context_);
                 more_results = false;
             }
-        }
+        } else
+            more_results = false;
         pthread_mutex_unlock(&nsort_context_mutex_);
 
         if (more_results) {
+/*
             // deserialize from sorted buffer into paoarray
             uint32_t offset = 0;
             uint32_t ind = 0;
@@ -334,12 +338,12 @@ void map_nsort_manager::finalize() {
             results_.insert(results_.end(), pa->list(),
                     pa->list() + ind);
             pthread_mutex_unlock(&results_mutex_);
+*/
         } else
             break;
     } while (true);
 
-    delete nbuf;
-*/
+//    delete nbuf;
     bufpool_->return_buffer(pa);
 }
 
