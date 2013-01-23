@@ -59,6 +59,7 @@ namespace {
 thread_pool_t tp_[JOS_NCPU];
 bool tp_created_ = false;
 int ncore_ = 0;
+cpu_set_t cset1, cset2;
 
 void *mthread_exit(void *) {
     pthread_exit(NULL);
@@ -67,11 +68,9 @@ void *mthread_exit(void *) {
 void *mthread_entry(void *args) {
     threadinfo *ti = threadinfo::current();
     ti->cur_core_ = ptr2int<int>(args);
-    assert(affinity_set(cpumap_physical_cpuid(ti->cur_core_)) == 0);
     while (true)
         tp_[ti->cur_core_].run_next_task();
 }
-
 }
 
 void mthread_create(pthread_t * tid, int lid, void *(*start_routine) (void *),
@@ -95,6 +94,20 @@ void mthread_join(pthread_t tid, int lid, void **retval) {
 void mthread_init(int ncore) {
     if (tp_created_)
         return;
+
+    // eeks. specific to jedi nodes
+    CPU_ZERO(&cset1);
+    CPU_ZERO(&cset2);
+    uint32_t i;
+    for (i = 0; i < 6; ++i)
+        CPU_SET(i, &cset1);
+    for (i = 12; i < 18; ++i)
+        CPU_SET(i, &cset1);
+    for (i = 6; i < 12; ++i)
+        CPU_SET(i, &cset2);
+    for (i = 18; i < 24; ++i)
+        CPU_SET(i, &cset2);
+
     threadinfo *ti = threadinfo::current();
     cpumap_init();
     ncore_ = ncore;
@@ -102,11 +115,17 @@ void mthread_init(int ncore) {
     assert(affinity_set(cpumap_physical_cpuid(main_core)) == 0);
     tp_created_ = true;
     bzero(tp_, sizeof(tp_));
-    for (int i = 0; i < ncore_; ++i)
-	if (i == main_core)
-	    tp_[i].tid_ = pthread_self();
-	else
-	    assert(pthread_create(&tp_[i].tid_, NULL, mthread_entry, int2ptr(i)) == 0);
+    for (int i = 0; i < ncore_; ++i) {
+        if (i == main_core)
+            tp_[i].tid_ = pthread_self();
+        else
+            assert(pthread_create(&tp_[i].tid_, NULL, mthread_entry, int2ptr(i)) == 0);
+        if (i % 2 == 0) {
+            pthread_setaffinity_np(tp_[i].tid_, sizeof(cpu_set_t), &cset1);
+        } else {
+            pthread_setaffinity_np(tp_[i].tid_, sizeof(cpu_set_t), &cset2);
+        }
+    }
 }
 
 void mthread_finalize(void) {
