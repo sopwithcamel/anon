@@ -21,40 +21,19 @@ struct args_struct;
 // results back from nsort
 struct nsort_buffer {
   public:
-    struct ns_list {
-      public:
-        ns_list(uint32_t siz) {
-            l = new char[siz];
-            s = 0;
-        }
-        ~ns_list() {
-            if (l) {
-                delete[] l;
-                l = NULL;
-            }
-        }
-        char* l;
-        uint32_t s;
-    };
-    nsort_buffer() : kBufferSize(8192), kMaxLists(8192) {
+    nsort_buffer() : kBufferSize(67108864) {
+        buf_ = (char*)malloc(kBufferSize);
     }
     ~nsort_buffer() {
-    }
-    uint32_t add_buf() {
-        ns_list* l = new ns_list(kBufferSize);
-        bufs_.push_back(l);
-        return bufs_.size() - 1;
-    }
-    void clear() {
-        for (uint32_t i = 0; i < bufs_.size(); ++i) {
-            delete[] bufs_[i];
+        if (buf_) {
+            delete buf_;
+            buf_ = NULL;
         }
-        bufs_.clear();
     }
 
     const uint32_t kBufferSize;
-    const uint32_t kMaxLists;
-    std::vector<ns_list*> bufs_;
+    char* buf_;
+    uint32_t size_;
 };
 
 /* @brief: A map manager using the CBT as the internal data structure */
@@ -151,8 +130,7 @@ void map_nsort_manager::submit_array(PAOArray* buf) {
     nsort_buffer* nbuf = new nsort_buffer();
     
     uint32_t offset = 0;
-    uint32_t buf_id = nbuf->add_buf();
-    char* ser_paos = nbuf->bufs_[buf_id]->l;
+    char* ser_paos = nbuf->buf_;
     uint32_t lim = nbuf->kBufferSize * 0.8;
 
     for (uint32_t i = 0; i < buf->index(); ++i) {
@@ -161,14 +139,8 @@ void map_nsort_manager::submit_array(PAOArray* buf) {
         ops()->serialize(pao, ser_paos + offset, siz);
         offset += siz;
         ser_paos[offset++]='\n';
-        if (offset > lim) {
-            nbuf->bufs_[buf_id]->s = offset;
-            buf_id = nbuf->add_buf();
-            ser_paos = nbuf->bufs_[buf_id]->l;
-            offset = 0;
-        }
     }
-    nbuf->bufs_[buf_id]->s = offset;
+    nbuf->size_ = offset;
 
     pthread_mutex_lock(&nsort_queue_mutex_);
     nsort_queue_.push_back(nbuf);
@@ -239,7 +211,7 @@ void* map_nsort_manager::worker(void *x) {
     // first field. The separator is actually supposed to separate _fields_ in
     // a record as well, but we can't handle this right now. I think it should
     // be ok if it sorts using a concatenation of the key and the value
-    err = nsort_define("-format:sep='\n' -key:pos=1 -processes=8 -temp_file=/localfs/hamur -statistics",
+    err = nsort_define("-format:sep='\n' -key:pos=1 -processes=24 -memory=32g -temp_file=/localfs/hamur -statistics",
             0, NULL, &m->nsort_context_);
     if (err < 0)
         m->error_exit("nsort_define()", err, m->nsort_context_);
@@ -260,13 +232,9 @@ void* map_nsort_manager::worker(void *x) {
 
             // release records to nsort
             int err;
-            uint32_t nlists = nbuf->bufs_.size();
-            for (uint32_t i = 0; i < nlists; ++i) {
-                nsort_buffer::ns_list* nl = nbuf->bufs_[i];
-                if ((err = nsort_release_recs(nl->l, nl->s,
-                                &m->nsort_context_)) < 0)
-                    m->error_exit("nsort_release_recs()", err, m->nsort_context_);
-            }
+            if ((err = nsort_release_recs(nbuf->buf_, nbuf->size_,
+                            &m->nsort_context_)) < 0)
+                m->error_exit("nsort_release_recs()", err, m->nsort_context_);
 
             // deallocate
             delete nbuf;
@@ -288,10 +256,8 @@ void* map_nsort_manager::worker(void *x) {
 
 void map_nsort_manager::finalize() {
     // get new buffer
-    PAOArray* pa = bufpool_->get_buffer();
     nsort_buffer* nbuf = new nsort_buffer();
-    for (uint32_t i = 0; i < nbuf->kMaxLists; ++i)
-        nbuf->add_buf();
+    PartialAgg** res = new PartialAgg*[nbuf->kBufferSize >> 4];
 
     bool more_results = true;
     do {
@@ -301,13 +267,10 @@ void map_nsort_manager::finalize() {
         if (!nsort_all_results_read_) {
             int err;
             // read results from nsort
-            for (uint32_t i = 0; i < nbuf->kMaxLists; ++i) {
-                nsort_buffer::ns_list* ns = nbuf->bufs_[i];
-                ns->s = nbuf->kBufferSize;
-                if ((err = nsort_return_recs(&(ns->l), (size_t*)&(ns->s),
-                                &nsort_context_)) < 0)
-                    error_exit("nsort_return_recs()", err, nsort_context_);
-            }
+            nbuf->size_ = nbuf->kBufferSize;
+            if ((err = nsort_return_recs(nbuf->buf_, (size_t*)&(nbuf->size_),
+                            &nsort_context_)) < 0)
+                error_exit("nsort_return_recs()", err, nsort_context_);
 
             if (err == NSORT_END_OF_OUTPUT) {
                 nsort_all_results_read_ = true;
@@ -320,31 +283,44 @@ void map_nsort_manager::finalize() {
         pthread_mutex_unlock(&nsort_context_mutex_);
 
         if (more_results) {
-/*
             // deserialize from sorted buffer into paoarray
             uint32_t offset = 0;
+            char* b = nbuf->buf_;
+            PartialAgg* lastPAO;
+            ops()->createPAO(NULL, &lastPAO);
+            res[0] = lastPAO;
+            ops()->deserialize(lastPAO, b, 0);
+            offset += ops()->getSerializedSize(lastPAO);
             uint32_t ind = 0;
-            char* b = nbuf->buf();
-            while (offset < nbuf->size()) {
-                PartialAgg* pao = pa->list()[ind];
-                ops()->deserialize(pao, b + offset);
+            PartialAgg* pao = NULL;;
+            while (offset < nbuf->size_) {
+                if (!pao)
+                    ops()->createPAO(NULL, &pao);
+                ops()->deserialize(pao, b + offset, 0);
                 offset += ops()->getSerializedSize(pao);
                 ++offset;
-                ++ind;
+                if (ops()->sameKey(lastPAO, pao)) {
+                    ops()->merge(lastPAO, pao);
+                } else {
+                    res[ind] = lastPAO;
+                    ++ind;
+                    lastPAO = pao;
+                    pao = NULL;
+                }
             }
+            res[ind] = lastPAO;
+            ++ind;  // for lastPAO
 
             // insert deserialized paos into results
             pthread_mutex_lock(&results_mutex_);
-            results_.insert(results_.end(), pa->list(),
-                    pa->list() + ind);
+            results_.insert(results_.end(), res, res + ind);
             pthread_mutex_unlock(&results_mutex_);
-*/
         } else
             break;
     } while (true);
 
 //    delete nbuf;
-    bufpool_->return_buffer(pa);
+    delete[] res;
 }
 
 #endif
