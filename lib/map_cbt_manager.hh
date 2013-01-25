@@ -39,6 +39,7 @@ struct map_cbt_manager : public map_manager {
 
     uint32_t ntree_;
     cbt::CompressTree** cbt_;
+    uint64_t num_inserted_;
 
     // buffer pool
     PAOArray** buffered_paos_;
@@ -84,7 +85,7 @@ void map_cbt_manager::init(Operations* ops, uint32_t ncore, uint32_t ntree) {
     cbt_queue_empty_ = new pthread_cond_t[ntree_];
 
     uint32_t fanout = 64;
-    uint32_t buffer_size = 125829120;// 31457280;
+    uint32_t buffer_size = 31457280; //125829120
     uint32_t pao_size = 64;
     for (uint32_t j = 0; j < ntree_; ++j) {
         cbt_[j] = new cbt::CompressTree(2, fanout, 1000, buffer_size,
@@ -134,6 +135,7 @@ void map_cbt_manager::init(Operations* ops, uint32_t ncore, uint32_t ntree) {
 
     // results mutex
     pthread_mutex_init(&results_mutex_, NULL);
+    num_inserted_ = 0;
 }
 
 void map_cbt_manager::submit_array(uint32_t treeid, PAOArray* buf) {
@@ -141,6 +143,8 @@ void map_cbt_manager::submit_array(uint32_t treeid, PAOArray* buf) {
     cbt_queue_[treeid]->push_back(buf);
     pthread_cond_signal(&cbt_queue_empty_[treeid]);
     pthread_mutex_unlock(&cbt_queue_mutex_[treeid]);
+    num_inserted_ += buf->index();
+    fprintf(stderr, "Num inserted: %lu\n", num_inserted_);
 }
 
 bool map_cbt_manager::emit(void *k, void *v, size_t keylen, unsigned hash) {
@@ -218,6 +222,7 @@ void* map_cbt_manager::worker(void *x) {
         if (ret == (int)m->ncore_)
             break;
     }
+    fprintf(stderr, "Num inserted: %lu\n", m->num_inserted_);
     return 0;
 }
 

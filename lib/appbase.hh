@@ -43,7 +43,7 @@ struct args_struct {
 };
 
 struct map_manager {
-    map_manager() : ops_(NULL) {}
+    map_manager() : ops_(NULL), results_out_(NULL) {}
 
     ~map_manager() {
         sem_destroy(&phase_semaphore_);
@@ -87,6 +87,7 @@ struct map_manager {
     // results
     std::vector<PartialAgg*> results_;
     pthread_mutex_t results_mutex_;
+    FILE* results_out_;
 
   protected:
     uint32_t ncore_;
@@ -160,6 +161,9 @@ struct mapreduce_appbase {
     virtual void output_all(FILE *fout);
     virtual const std::vector<PartialAgg*>& results() const;
     void free_results();
+    void set_results_out(FILE* f) {
+        results_out_ = f;
+    }
     /* @brief: called in user defined map function. If keycopy function is
         used, Metis calls the keycopy function for each new key, and user
         can free the key when this function returns. */
@@ -208,6 +212,7 @@ struct mapreduce_appbase {
     }
     int next_task_;
     int phase_;
+    FILE* results_out_;
     xarray<split_t> ma_;
     map_manager *m_;
 };

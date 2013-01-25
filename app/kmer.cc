@@ -160,6 +160,7 @@ int main(int argc, char *argv[]) {
     else
         ops = new WCPlainOperations();
     app.set_ops(ops);
+    app.set_results_out(fout);
 
 //    ProfilerStart("/tmp/anon.perf");
     app.sched_run();

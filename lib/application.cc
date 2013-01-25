@@ -191,6 +191,7 @@ int mapreduce_appbase::sched_run() {
     }
 
     m_ = create_map_manager();
+    m_->results_out_ = results_out_;
 
     uint64_t real_start = read_tsc();
     uint64_t map_time = 0;

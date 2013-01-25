@@ -52,6 +52,7 @@ struct map_nsort_manager : public map_manager {
     void error_exit(const char *func, int err, unsigned context);
   private:
     const uint32_t kInsertAtOnce;
+    uint64_t num_inserted_;
 
     // nsort
     unsigned nsort_context_;
@@ -121,6 +122,7 @@ void map_nsort_manager::init(Operations* ops, uint32_t ncore) {
 
     // results mutex
     pthread_mutex_init(&results_mutex_, NULL);
+    num_inserted_ = 0;
 }
 
 void map_nsort_manager::submit_array(PAOArray* buf) {
@@ -141,6 +143,8 @@ void map_nsort_manager::submit_array(PAOArray* buf) {
         ser_paos[offset++]='\n';
     }
     nbuf->size_ = offset;
+    num_inserted_ += buf->index();
+    fprintf(stderr, "Num inserted: %lu\n", num_inserted_);
 
     pthread_mutex_lock(&nsort_queue_mutex_);
     nsort_queue_.push_back(nbuf);
@@ -211,7 +215,7 @@ void* map_nsort_manager::worker(void *x) {
     // first field. The separator is actually supposed to separate _fields_ in
     // a record as well, but we can't handle this right now. I think it should
     // be ok if it sorts using a concatenation of the key and the value
-    err = nsort_define("-format:sep='\n' -key:pos=1 -processes=24 -memory=32g -temp_file=/localfs/hamur -statistics",
+    err = nsort_define("-format:sep='\n' -key:pos=1 -processes=24 -memory=32g -temp_file=/mnt/hamur -statistics",
             0, NULL, &m->nsort_context_);
     if (err < 0)
         m->error_exit("nsort_define()", err, m->nsort_context_);
@@ -313,7 +317,20 @@ void map_nsort_manager::finalize() {
 
             // insert deserialized paos into results
             pthread_mutex_lock(&results_mutex_);
-            results_.insert(results_.end(), res, res + ind);
+            if (results_out_) {
+                offset = 0;
+                char* b = nbuf->buf_;
+                for (uint32_t i = 0; i < ind; ++i) {
+                    PartialAgg* pao = res[i];
+                    ops()->serialize(pao, b + offset, 0);
+                    uint32_t s = ops()->getSerializedSize(pao);
+                    offset += s;
+                    b[offset++]='\n';
+                }
+                fwrite(b, offset, sizeof(char), results_out_);
+            } else {
+                results_.insert(results_.end(), res, res + ind);
+            }
             pthread_mutex_unlock(&results_mutex_);
         } else
             break;
