@@ -27,8 +27,10 @@ struct img_cluster : public mapreduce_appbase {
         bool not_empty = true;
         img_hash_pair_t* p = new img_hash_pair_t();
         ICValue* ic_value = new ICValue();
-        ic_value->neigh_[0].img = (char*)malloc(IDLEN);
-        ic_value->neigh_[0].hash = (char*)malloc(HASHLEN);
+        Neighbor n;
+        n.img = (char*)malloc(IDLEN);
+        n.hash = (char*)malloc(HASHLEN);
+        ic_value->neigh_.push_back(n);
         do {
             split_record sd(ma, s_.overlap(), " \t\n");
             do {
@@ -56,7 +58,6 @@ struct img_cluster : public mapreduce_appbase {
                         rotv[j] = v[(st + j) % hash_len];
                         ++j;
                     } while (j < prefix_len);
-                    ic_value->num_neighbors_ = 1;
                     strcpy(ic_value->neigh_[0].img, k);
                     strcpy(ic_value->neigh_[0].hash, v);
                     map_emit(rotv, (void*)ic_value, prefix_len);

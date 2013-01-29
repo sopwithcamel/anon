@@ -1,8 +1,8 @@
 #include "PartialAgg.h"
+#include <vector>
 
 #define HASHLEN      20
 #define IDLEN       16
-#define NEIGH       10
 
 typedef struct {
     char* img;
@@ -15,8 +15,7 @@ struct Neighbor {
 };
 
 struct ICValue {
-    uint32_t num_neighbors_;
-    Neighbor neigh_[NEIGH];
+    std::vector<Neighbor> neigh_;
 };
 
 class ICPtrPAO : public PartialAgg
@@ -25,23 +24,24 @@ class ICPtrPAO : public PartialAgg
   public:
 	ICPtrPAO(char* wrd) {
         memset(this, 0,
-                sizeof(key_) + sizeof(uint32_t) +
-                NEIGH * sizeof(Neighbor));
+                sizeof(key_) + sizeof(uint32_t));
+        value_.neigh_.clear();
         if (wrd) {
             strncpy(key_, wrd, HASHLEN - 1);
         }
     }
 	~ICPtrPAO() {
-        for (uint32_t i = 0; i < value_.num_neighbors_; ++i) {
+        for (uint32_t i = 0; i < value_.neigh_.size(); ++i) {
             free(value_.neigh_[i].img);
             free(value_.neigh_[i].hash);
         }
+        value_.neigh_.clear();
     }
     uint32_t num_neighbors() const {
-        return value_.num_neighbors_;
+        return value_.neigh_.size();
     }
     img_hash_pair_t neighbor(uint32_t i) const {
-        assert(i < value_.num_neighbors_);
+        assert(i < value_.neigh_.size());
         img_hash_pair_t ih;
         ih.img = (char*)value_.neigh_[i].img;
         ih.hash = (char*)value_.neigh_[i].hash;
@@ -75,14 +75,21 @@ class ICPtrOperations : public Operations {
 
     void setValue(PartialAgg* p, void* v) const {
         ICPtrPAO* wp = (ICPtrPAO*)p;
+        for (uint32_t i = 0; i < wp->value_.neigh_.size(); ++i) {
+            free(wp->value_.neigh_[i].img);
+            free(wp->value_.neigh_[i].hash);
+        }
+        wp->value_.neigh_.clear();
+
         ICValue* icv = (ICValue*)v;
-        wp->value_.num_neighbors_ = icv->num_neighbors_;
-        for (uint32_t i = 0; i < icv->num_neighbors_; ++i) {
-            wp->value_.neigh_[i].img = (char*)malloc(IDLEN);
-            strncpy(wp->value_.neigh_[i].img, icv->neigh_[i].img, IDLEN - 1);
-            wp->value_.neigh_[i].hash = (char*)malloc(HASHLEN);
-            strncpy(wp->value_.neigh_[i].hash, icv->neigh_[i].hash,
+        for (uint32_t i = 0; i < icv->neigh_.size(); ++i) {
+            Neighbor n;
+            n.img = (char*)malloc(IDLEN);
+            strncpy(n.img, icv->neigh_[i].img, IDLEN - 1);
+            n.hash = (char*)malloc(HASHLEN);
+            strncpy(n.hash, icv->neigh_[i].hash,
                     HASHLEN - 1);
+            wp->value_.neigh_.push_back(n);
         }
     }
 
@@ -107,19 +114,16 @@ class ICPtrOperations : public Operations {
 	bool merge(PartialAgg* p, PartialAgg* mg) const {
         ICValue* pv = &((ICPtrPAO*)p)->value_;
         ICValue* mv = &((ICPtrPAO*)mg)->value_;
-        uint32_t n = pv->num_neighbors_;
-        uint32_t m = mv->num_neighbors_;
-        if (n + m > NEIGH) {
-            m = NEIGH - n;
-        }
+        uint32_t n = pv->neigh_.size();
+        uint32_t m = mv->neigh_.size();
             
         for (uint32_t i = 0; i < m; ++i) {
-            pv->neigh_[n + i] = mv->neigh_[i];
+            Neighbor n = mv->neigh_[i];
+            pv->neigh_.push_back(n);
             mv->neigh_[i].img = NULL;
             mv->neigh_[i].hash = NULL;
         }
-        pv->num_neighbors_ += m;
-        mv->num_neighbors_ = 0;
+        mv->neigh_.clear();
         return true;
     }
 
