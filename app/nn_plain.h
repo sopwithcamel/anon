@@ -111,7 +111,4 @@ class NNPlainOperations : public Operations {
         memcpy((void*)p, (void*)input, sizeof(NNPlainPAO));
         return true;
     }
-
-  private:
-    size_t dividePAO(const PartialAgg& p, PartialAgg** pl) const {}
 };

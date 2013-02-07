@@ -29,6 +29,7 @@ struct map_cbt_manager : public map_manager {
     void flush_buffered_paos();
     void finish_phase(int phase);
     void finalize();
+    bool get_paos(PartialAgg** buf, uint64_t& num_read, uint64_t max);
   private:
     static void *worker(void *arg);
     static void *random_input_worker(void *arg);
@@ -144,7 +145,6 @@ void map_cbt_manager::submit_array(uint32_t treeid, PAOArray* buf) {
     pthread_cond_signal(&cbt_queue_empty_[treeid]);
     pthread_mutex_unlock(&cbt_queue_mutex_[treeid]);
     num_inserted_ += buf->index();
-    fprintf(stderr, "Num inserted: %lu\n", num_inserted_);
 }
 
 bool map_cbt_manager::emit(void *k, void *v, size_t keylen, unsigned hash) {
@@ -222,7 +222,7 @@ void* map_cbt_manager::worker(void *x) {
         if (ret == (int)m->ncore_)
             break;
     }
-    fprintf(stderr, "Num inserted: %lu\n", m->num_inserted_);
+    fprintf(stderr, "Num inserted: %ld\n", m->num_inserted_);
     return 0;
 }
 
@@ -245,6 +245,18 @@ void map_cbt_manager::finalize() {
                 &buf->list()[num_read]);
         pthread_mutex_unlock(&results_mutex_);
     } while (remain);
+}
+
+bool map_cbt_manager::get_paos(PartialAgg** buf, uint64_t& num_read,
+        uint64_t max) {
+    uint32_t coreid = threadinfo::current()->cur_core_;
+    uint32_t treeid = coreid % ntree_;
+
+    pthread_mutex_lock(&cbt_queue_mutex_[treeid]);
+    bool remain = cbt_[treeid]->bulk_read(buf, num_read,
+            max);
+    pthread_mutex_unlock(&cbt_queue_mutex_[treeid]);
+    return remain;
 }
 
 #endif

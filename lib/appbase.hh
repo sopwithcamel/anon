@@ -43,7 +43,7 @@ struct args_struct {
 };
 
 struct map_manager {
-    map_manager() : ops_(NULL), results_out_(NULL) {}
+    map_manager() : results_out_(NULL), ops_(NULL) {}
 
     ~map_manager() {
         sem_destroy(&phase_semaphore_);

@@ -35,14 +35,14 @@ struct pr : public mapreduce_appbase {
         char* rec = (char*)malloc(max_record_len);
         char** neigh_ptrs = (char**)malloc(max_ptrs * sizeof(char*));
 
-        size_t record_len;
+        size_t record_len = 0;
         bool not_empty = true;
         do {
             split_large_record sd(ma, s_.overlap(), "\n");
             do {
                 not_empty = sd.fill(rec, max_record_len, record_len);
 
-                char *saveptr, *r;
+                char *saveptr;
                 uint32_t neighbor_ctr = 0;                
                 // add a null character terminator
                 rec[record_len] = 0;

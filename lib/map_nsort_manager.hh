@@ -133,7 +133,6 @@ void map_nsort_manager::submit_array(PAOArray* buf) {
     
     uint32_t offset = 0;
     char* ser_paos = nbuf->buf_;
-    uint32_t lim = nbuf->kBufferSize * 0.8;
 
     for (uint32_t i = 0; i < buf->index(); ++i) {
         PartialAgg* pao = buf->list()[i];
@@ -144,7 +143,6 @@ void map_nsort_manager::submit_array(PAOArray* buf) {
     }
     nbuf->size_ = offset;
     num_inserted_ += buf->index();
-    fprintf(stderr, "Num inserted: %lu\n", num_inserted_);
 
     pthread_mutex_lock(&nsort_queue_mutex_);
     nsort_queue_.push_back(nbuf);

@@ -18,14 +18,12 @@ struct img_cluster : public mapreduce_appbase {
     }
     void map_function(split_t *ma) {
         char k[64], v[64], rotv[64];
-        uint32_t kc = 0;
         size_t klen, vlen;
         int step = 4;
         size_t hash_len = 20;
         int prefix_len = hash_len - step;
         int num_rot = hash_len / step;
         bool not_empty = true;
-        img_hash_pair_t* p = new img_hash_pair_t();
         ICValue* ic_value = new ICValue();
         do {
             split_record sd(ma, s_.overlap(), " \t\n");
@@ -134,7 +132,7 @@ struct nearest_neighbor : public mapreduce_appbase {
     }
 
     bool result_compare(const char* k1, const void* v1, 
-            const char* k2, const void* v2) {}
+            const char* k2, const void* v2) { assert(false && "Not required"); return false; }
 
     void print_results_header() {
         printf("\nnearest neighbor: results\n");
@@ -144,8 +142,8 @@ struct nearest_neighbor : public mapreduce_appbase {
         fprintf(f, "%15s - %15s\n", key, (char*)v);
     }
 
-    int nsplit_;
     map_manager* m_;
+    int nsplit_;
     // mutex for 
     pthread_mutex_t mm_mutex_;
     // tracks number of splits during split generation

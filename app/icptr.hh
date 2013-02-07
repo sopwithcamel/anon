@@ -114,7 +114,6 @@ class ICPtrOperations : public Operations {
 	bool merge(PartialAgg* p, PartialAgg* mg) const {
         ICValue* pv = &((ICPtrPAO*)p)->value_;
         ICValue* mv = &((ICPtrPAO*)mg)->value_;
-        uint32_t n = pv->neigh_.size();
         uint32_t m = mv->neigh_.size();
             
         for (uint32_t i = 0; i < m; ++i) {
@@ -153,7 +152,4 @@ class ICPtrOperations : public Operations {
         assert(false && "Not implemented");
         return true;
     }
-
-  private:
-    size_t dividePAO(const PartialAgg& p, PartialAgg** pl) const {}
 };

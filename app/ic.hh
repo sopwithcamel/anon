@@ -151,7 +151,4 @@ class ICPlainOperations : public Operations {
         memcpy(icp->value_.neigh_, input + off, neigh_size);
         return true;
     }
-
-  private:
-    size_t dividePAO(const PartialAgg& p, PartialAgg** pl) const {}
 };

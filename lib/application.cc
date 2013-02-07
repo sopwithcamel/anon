@@ -225,7 +225,7 @@ int mapreduce_appbase::sched_run() {
         run_phase(FINALIZE, num_finalize_workers, finalize_time);
         mthread_finalize();
 
-        fprintf(stderr, "Results has %u elements\n", m_->results_.size());
+        fprintf(stderr, "Results has %lu elements\n", m_->results_.size());
     }
     if (!skip_results_processing_)
         set_final_result();

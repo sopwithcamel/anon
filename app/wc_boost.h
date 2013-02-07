@@ -106,7 +106,4 @@ class WCBoostOperations : public Operations {
         memcpy(&(wp->count), input + l + 1, sizeof(uint32_t));
         return true;
     }
-
-  private:
-    size_t dividePAO(const PartialAgg& p, PartialAgg** p_list) const {}
 };

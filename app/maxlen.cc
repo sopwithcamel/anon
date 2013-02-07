@@ -38,7 +38,7 @@ struct maxlen : public mapreduce_appbase {
             split_digram sd(ma);
             while (sd.fill(k, 1024, klen)) {
                 if (klen <= 64) {
-                    sprintf(key, "%d", strlen(k));
+                    sprintf(key, "%lu", strlen(k));
                     map_emit(key, (void *)1, klen);
                 }
                 memset(k, 0, klen);

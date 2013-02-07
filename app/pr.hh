@@ -56,7 +56,6 @@ class PageRankOperations : public Operations {
     }
 
 	size_t createPAO(Token* t, PartialAgg** p) const {
-        PageRankPAO* new_pao;
         if (t == NULL)
             p[0] = new PageRankPAO(NULL);
         else	
@@ -108,7 +107,4 @@ class PageRankOperations : public Operations {
         memcpy(wp, input, sizeof(PageRankPAO));
         return true;
     }
-
-  private:
-    size_t dividePAO(const PartialAgg& p, PartialAgg** pl) const {}
 };

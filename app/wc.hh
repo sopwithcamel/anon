@@ -1,6 +1,6 @@
 #include "PartialAgg.h"
 
-#define KEYLEN      64
+#define KEYLEN      32
 
 class WCPlainPAO : public PartialAgg
 {
@@ -103,7 +103,4 @@ class WCPlainOperations : public Operations {
         strcpy(wp->key, &input[sizeof(uint32_t)]);
         return true;
     }
-
-  private:
-    size_t dividePAO(const PartialAgg& p, PartialAgg** pl) const {}
 };

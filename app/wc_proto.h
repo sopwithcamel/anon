@@ -98,7 +98,4 @@ class WCProtoOperations : public Operations {
         WCProtoPAO* wp = (WCProtoPAO*)p;
         return wp->pb.ParseFromArray(input, size);
     }
-
-  private:
-    size_t dividePAO(const PartialAgg& p, PartialAgg** p_list) const {}
 };

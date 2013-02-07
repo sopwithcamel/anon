@@ -151,7 +151,6 @@ struct split_kmer {
     }
 
     bool fill(char *key, size_t maxlen, size_t &klen) {
-        char* spl;
         size_t chunk_length = ma_->chunk_end_offset -
             ma_->chunk_start_offset;
 

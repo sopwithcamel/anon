@@ -42,6 +42,7 @@ struct map_sh_manager : public map_manager {
     void flush_buffered_paos();
     void finish_phase(int phase);
     void finalize();
+    bool get_paos(PartialAgg** buf, uint64_t& num_read, uint64_t max);
   private:
     static void *worker(void *arg);
     void submit_array(uint32_t treeid, PAOArray* buf);
@@ -62,6 +63,9 @@ struct map_sh_manager : public map_manager {
     pthread_mutex_t* sh_queue_mutex_;
     pthread_cond_t* sh_queue_empty_;
     std::vector<std::deque<PAOArray*>*> sh_queue_;    
+
+    // tracking indices when reading out
+    uint32_t* ind_;
 };
 
 map_sh_manager::map_sh_manager() :
@@ -84,6 +88,8 @@ map_sh_manager::~map_sh_manager() {
     delete[] sh_;
     delete[] sh_queue_mutex_;
     delete[] sh_queue_empty_;
+
+    delete[] ind_;
 }
 
 void map_sh_manager::init(Operations* ops, uint32_t ncore, uint32_t ntables) {
@@ -143,6 +149,10 @@ void map_sh_manager::init(Operations* ops, uint32_t ncore, uint32_t ntables) {
 
     // results mutex
     pthread_mutex_init(&results_mutex_, NULL);
+
+    ind_ = new uint32_t[ntables_];
+    for (uint32_t i = 0; i < ntables_; ++i)
+        ind_[i] = 0;
 }
 
 void map_sh_manager::submit_array(uint32_t treeid, PAOArray* buf) {
@@ -285,6 +295,27 @@ void map_sh_manager::finalize() {
             ind = 0;
         }
     }
+}
+
+bool map_sh_manager::get_paos(PartialAgg** buf, uint64_t& num_read,
+        uint64_t max) {
+    uint32_t coreid = threadinfo::current()->cur_core_;
+    if (coreid >= ntables_) {
+        num_read = 0;
+        return true;
+    }
+    uint32_t tableid = coreid;
+    Hash::iterator it;
+    num_read = 0;
+
+    for (it = sh_[tableid]->begin(); it != sh_[tableid]->end(); ++it) {
+        buf[num_read++] = it->second;
+        if (num_read == max) {
+            ind_[tableid] += num_read;
+            return true;
+        }
+    }
+    return false;
 }
 
 #endif
