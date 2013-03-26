@@ -28,7 +28,6 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <gperftools/profiler.h>
-#include <gperftools/heap-profiler.h>
 #include <assert.h>
 #include <fcntl.h>
 #include <ctype.h>
@@ -54,8 +53,8 @@
 
 enum { with_value_modifier = 1 };
 
-struct wc : public mapreduce_appbase {
-    wc(const char *f, int nsplit) : s_(f, nsplit) {}
+struct dg : public mapreduce_appbase {
+    dg(const char *f, int nsplit) : s_(f, nsplit) {}
     bool split(split_t *ma, int ncores) {
         return s_.split(ma, ncores, " \t\r\n\0");
     }
@@ -66,10 +65,9 @@ struct wc : public mapreduce_appbase {
         char k[1024];
         size_t klen;
         do {
-            split_word sw(ma);
-            while (sw.fill(k, 1024, klen)) {
-                k[klen] = '\0';
-                map_emit(k, (void *)(intptr_t)1, klen);
+            split_digram sd(ma);
+            while (sd.fill(k, 1024, klen)) {
+                map_emit(k, (void *)1, klen);
                 memset(k, 0, klen);
             }
         } while (s_.get_split_chunk(ma));
@@ -100,7 +98,7 @@ static void usage(char *prog) {
     printf("  -r #reduce tasks : # of reduce tasks\n");
     printf("  -l ntops : # of top val. pairs to display\n");
     printf("  -q : quiet output (for batch test)\n");
-    printf("  -x : use PAOs with pointers\n");
+    printf("  -x : pointer mode for digram count\n");
     printf("  -o filename : save output to a file\n");
     exit(EXIT_FAILURE);
 }
@@ -151,7 +149,7 @@ int main(int argc, char *argv[]) {
     }
     mapreduce_appbase::initialize();
     /* get input file */
-    wc app(fn, map_tasks);
+    dg app(fn, map_tasks);
     app.set_ncore(nprocs);
     app.set_ntrees(ntrees);
     Operations* ops;
@@ -160,11 +158,10 @@ int main(int argc, char *argv[]) {
     else
         ops = new WCPlainOperations();
     app.set_ops(ops);
-    app.set_results_out(fout);
 
 //    ProfilerStart("/tmp/anon.perf");
     app.sched_run();
-//    app.print_stats();
+    app.print_stats();
     /* get the number of results to display */
     if (!quiet)
         app.print_results_header();

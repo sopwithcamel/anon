@@ -56,6 +56,9 @@ class HashUtil {
     static uint32_t MurmurHash(const void *buf, size_t length, uint32_t seed = 0);
     static uint32_t MurmurHash(const string &s, uint32_t seed = 0);
 
+    // MurmurHash3
+    static uint32_t MurmurHash3(const void *buf, int len, uint32_t seed = 0);
+
     // SuperFastHash
     static uint32_t SuperFastHash(const void *buf, size_t len);
     static uint32_t SuperFastHash(const string &s);
@@ -74,6 +77,8 @@ class HashUtil {
 
   private:
     HashUtil();
+    static void MurmurHash3_x86_32(const void * key, int len,
+            uint32_t seed, void * out);
 };
 
 #endif  // SRC_HASHUTIL_H_

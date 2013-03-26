@@ -81,7 +81,7 @@ bool defsplitter::get_split_chunk(split_t* ma) {
 }
 
 bool defsplitter::split(split_t *ma, int ncores, const char *stop, size_t align) {
-    int max = size_ >> 12; // divide by 4096
+    int max = std::max((size_t)1, size_ >> 12); // divide by 4096
     if (nsplit_ > max) {
         nsplit_ = max;
     }
@@ -90,9 +90,9 @@ bool defsplitter::split(split_t *ma, int ncores, const char *stop, size_t align)
     if (pos_ >= size_)
         return false;
     size_t length = std::min(size_ - pos_, size_ / nsplit_);
-    if (length < size_ - pos_)
-        length = round_up(length, 4096); 
-    
+//    if (length < size_ - pos_)
+//        length = round_up(length, 4096); 
+
     ma->split_start_offset = ma->chunk_start_offset = ma->chunk_end_offset = pos_;
     ma->split_end_offset = pos_ + length;
 
@@ -100,59 +100,5 @@ bool defsplitter::split(split_t *ma, int ncores, const char *stop, size_t align)
     pos_ += length;
     return true;
 }
-
-struct split_word {
-    split_word(split_t *ma) :
-            ma_(ma), len_(0),
-            bytewise_(false) {
-        assert(ma_ && ma_->data);
-        str_ = ma_->data;
-    }
-
-    bool fill(char *k, size_t maxlen, size_t &klen) {
-        char* spl;
-        size_t chunk_length = ma_->chunk_end_offset -
-            ma_->chunk_start_offset;
-
-        if (bytewise_) {
-            char *d = ma_->data;
-            klen = 0;
-            for (; len_ < chunk_length && !letter(d[len_]); ++len_);
-            if (len_ == chunk_length) {
-                return false;
-            }
-            for (; len_ < chunk_length && letter(d[len_]); ++len_) {
-                k[klen++] = d[len_];
-            }
-            k[klen] = 0;
-            return true;
-        }
-
-        // split token
-        spl = strtok_r(str_, " \t\n\r\0", &saveptr1);
-        if (spl == NULL)
-            return false;
-        int l = strlen(spl);
-        strncpy(k, spl, l);
-        klen = l;
-        str_ = NULL;
-        if (spl + maxlen > ma_->data + chunk_length) {
-            bytewise_ = true;
-            len_ = (spl - ma_->data) + klen;
-        }
-        return true;
-    }
-
-  private:
-    bool letter(char c) {
-        return c >= 'a' && c <= 'z';
-    }
-
-    split_t* ma_;
-    char* str_;
-    char* saveptr1;
-    size_t len_;
-    bool bytewise_;
-};
 
 #endif

@@ -40,7 +40,7 @@
 #include <sys/time.h>
 #include <sched.h>
 #include "appbase.hh"
-#include "defsplitter.hh"
+#include "overlap_splitter.hh"
 #include "tokenizers.hh"
 #include "bench.hh"
 #include "wc.hh"
@@ -54,8 +54,8 @@
 
 enum { with_value_modifier = 1 };
 
-struct wc : public mapreduce_appbase {
-    wc(const char *f, int nsplit) : s_(f, nsplit) {}
+struct kmer : public mapreduce_appbase {
+    kmer(const char *f, int nsplit) : s_(f, nsplit) {}
     bool split(split_t *ma, int ncores) {
         return s_.split(ma, ncores, " \t\r\n\0");
     }
@@ -66,7 +66,7 @@ struct wc : public mapreduce_appbase {
         char k[1024];
         size_t klen;
         do {
-            split_word sw(ma);
+            split_kmer sw(ma, 1024, 25);
             while (sw.fill(k, 1024, klen)) {
                 k[klen] = '\0';
                 map_emit(k, (void *)(intptr_t)1, klen);
@@ -89,7 +89,7 @@ struct wc : public mapreduce_appbase {
             fprintf(f, "%15s - %d\n", key, ptr2int<unsigned>(v));
     }
   private:
-    defsplitter s_;
+    overlap_splitter s_;
 };
 
 static void usage(char *prog) {
@@ -151,7 +151,7 @@ int main(int argc, char *argv[]) {
     }
     mapreduce_appbase::initialize();
     /* get input file */
-    wc app(fn, map_tasks);
+    kmer app(fn, map_tasks);
     app.set_ncore(nprocs);
     app.set_ntrees(ntrees);
     Operations* ops;

@@ -15,7 +15,9 @@
 #ifndef APPBASE_HH_
 #define APPBASE_HH_ 1
 
+#include <dlfcn.h>
 #include <tbb/blocked_range.h>
+#include <semaphore.h>
 
 #include "mr-types.hh"
 #include "profile.hh"
@@ -26,6 +28,71 @@ struct mapreduce_appbase;
 struct map_cbt_manager;
 
 struct static_appbase;
+
+struct args_struct {
+  public:
+    explicit args_struct(uint32_t c) {
+        argc = c;
+        argv = new void*[c];
+    }
+    ~args_struct() {
+        delete[] argv;
+    }
+    void** argv;
+    uint32_t argc;
+};
+
+struct map_manager {
+    map_manager() : results_out_(NULL), ops_(NULL) {}
+
+    ~map_manager() {
+        sem_destroy(&phase_semaphore_);
+    }
+    
+    const Operations* ops() const {
+        assert(ops_);
+        return ops_;
+    }
+    virtual bool emit(void *key, void *val, size_t keylen, unsigned hash) = 0;
+    virtual void flush_buffered_paos() {}
+    virtual void finish_phase(int phase) {}
+    virtual void finalize() {}
+    virtual bool get_paos(PartialAgg** buf, uint64_t& num_read, uint64_t max) {
+        assert(false && "Implement this if you want to use it");
+    }
+
+  protected:
+    bool link_user_map(const std::string& soname) {
+        const char* err;
+        void* handle;
+        handle = dlopen(soname.c_str(), RTLD_NOW);
+        if (!handle) {
+            fputs(dlerror(), stderr);
+            return false;
+        }
+
+        Operations* (*create_ops_obj)() = (Operations* (*)())dlsym(handle,
+                "__libminni_create_ops");
+        if ((err = dlerror()) != NULL) {
+            fprintf(stderr, "Error locating symbol __libminni_create_ops\
+                    in %s\n", err);
+            exit(-1);
+        }
+        ops_ = create_ops_obj();
+        return true;
+    }
+
+  public:
+    sem_t phase_semaphore_;
+    // results
+    std::vector<PartialAgg*> results_;
+    pthread_mutex_t results_mutex_;
+    FILE* results_out_;
+
+  protected:
+    uint32_t ncore_;
+    Operations* ops_;
+};
 
 struct mapreduce_appbase {
     struct ResultComparator {
@@ -92,12 +159,26 @@ struct mapreduce_appbase {
     virtual void print_results_header();
     virtual void print_top(size_t ndisp);
     virtual void output_all(FILE *fout);
+    virtual const std::vector<PartialAgg*>& results() const;
     void free_results();
+    void set_results_out(FILE* f) {
+        results_out_ = f;
+    }
     /* @brief: called in user defined map function. If keycopy function is
         used, Metis calls the keycopy function for each new key, and user
         can free the key when this function returns. */
     void map_emit(void *key, void *val, int key_length);
     void sort(uint32_t uleft, uint32_t uright);
+
+    void set_skip_results_processing(bool val) {
+        skip_results_processing_ = val;
+    }
+    void set_skip_finalize(bool val) {
+        skip_finalize_ = val;
+    }
+    map_manager* get_map_manager() {
+        return m_;
+    }
 
     /* internal use only */
   protected:
@@ -108,8 +189,7 @@ struct mapreduce_appbase {
     // launcher function for worker threads
     static void *base_worker(void *arg);
     void run_phase(int phase, int ncore, uint64_t &t);
-    map_cbt_manager* create_map_cbt_manager();
-
+    map_manager* create_map_manager();
     virtual void print_record(FILE* f, const char* key, void* v);
     void set_final_result();
     void reset();
@@ -123,14 +203,18 @@ struct mapreduce_appbase {
     uint64_t total_finalize_time_;
     uint64_t total_real_time_;
     bool clean_;
+
+    bool skip_results_processing_;
+    bool skip_finalize_;
     
     int next_task() {
         return atomic_add32_ret(&next_task_);
     }
     int next_task_;
     int phase_;
+    FILE* results_out_;
     xarray<split_t> ma_;
-    map_cbt_manager *m_;
+    map_manager *m_;
 };
 
 #endif

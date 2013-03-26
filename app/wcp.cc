@@ -28,7 +28,6 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <gperftools/profiler.h>
-#include <gperftools/heap-profiler.h>
 #include <assert.h>
 #include <fcntl.h>
 #include <ctype.h>
@@ -43,8 +42,7 @@
 #include "defsplitter.hh"
 #include "tokenizers.hh"
 #include "bench.hh"
-#include "wc.hh"
-#include "wc_boost.h"
+#include "wc_proto.h"
 
 #define DEFAULT_NDISP 10
 
@@ -53,6 +51,8 @@
 //#define HADOOP
 
 enum { with_value_modifier = 1 };
+
+static int alphanumeric;
 
 struct wc : public mapreduce_appbase {
     wc(const char *f, int nsplit) : s_(f, nsplit) {}
@@ -67,11 +67,8 @@ struct wc : public mapreduce_appbase {
         size_t klen;
         do {
             split_word sw(ma);
-            while (sw.fill(k, 1024, klen)) {
-                k[klen] = '\0';
-                map_emit(k, (void *)(intptr_t)1, klen);
-                memset(k, 0, klen);
-            }
+            while (sw.fill(k, 1024, klen))
+                map_emit(k, (void *)1, klen);
         } while (s_.get_split_chunk(ma));
     }
     bool result_compare(const char* k1, const void* v1, 
@@ -100,14 +97,13 @@ static void usage(char *prog) {
     printf("  -r #reduce tasks : # of reduce tasks\n");
     printf("  -l ntops : # of top val. pairs to display\n");
     printf("  -q : quiet output (for batch test)\n");
-    printf("  -x : use PAOs with pointers\n");
+    printf("  -a : alphanumeric word count\n");
     printf("  -o filename : save output to a file\n");
     exit(EXIT_FAILURE);
 }
 
 int main(int argc, char *argv[]) {
     int nprocs = 0, map_tasks = 0, ndisp = 5, ntrees = 0;
-    int pointer_mode = 0;
     int quiet = 0;
     int c;
     if (argc < 2)
@@ -115,7 +111,7 @@ int main(int argc, char *argv[]) {
     char *fn = argv[1];
     FILE *fout = NULL;
 
-    while ((c = getopt(argc - 1, argv + 1, "p:t:s:l:m:r:qxo:")) != -1) {
+    while ((c = getopt(argc - 1, argv + 1, "p:t:s:l:m:r:qao:")) != -1) {
         switch (c) {
             case 'p':
                 nprocs = atoi(optarg);
@@ -132,8 +128,8 @@ int main(int argc, char *argv[]) {
             case 'q':
                 quiet = 1;
                 break;
-            case 'x':
-                pointer_mode = 1;
+            case 'a':
+                alphanumeric = 1;
                 break;
             case 'o':
                 fout = fopen(optarg, "w+");
@@ -154,17 +150,12 @@ int main(int argc, char *argv[]) {
     wc app(fn, map_tasks);
     app.set_ncore(nprocs);
     app.set_ntrees(ntrees);
-    Operations* ops;
-    if (pointer_mode)
-        ops = new WCBoostOperations();
-    else
-        ops = new WCPlainOperations();
+    Operations* ops = new WCProtoOperations();
     app.set_ops(ops);
-    app.set_results_out(fout);
 
 //    ProfilerStart("/tmp/anon.perf");
     app.sched_run();
-//    app.print_stats();
+    app.print_stats();
     /* get the number of results to display */
     if (!quiet)
         app.print_results_header();

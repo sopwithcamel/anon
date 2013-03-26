@@ -1,34 +1,8 @@
-/* Copyright (c) 2007, Stanford University
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above copyright
- *       notice, this list of conditions and the following disclaimer in the
- *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of Stanford University nor the
- *       names of its contributors may be used to endorse or promote products
- *       derived from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY STANFORD UNIVERSITY ``AS IS'' AND ANY
- * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL STANFORD UNIVERSITY BE LIABLE FOR ANY
- * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
- * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
- * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
 #include <stdio.h>
 #include <string.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <gperftools/profiler.h>
-#include <gperftools/heap-profiler.h>
 #include <assert.h>
 #include <fcntl.h>
 #include <ctype.h>
@@ -40,22 +14,15 @@
 #include <sys/time.h>
 #include <sched.h>
 #include "appbase.hh"
-#include "defsplitter.hh"
+#include "overlap_splitter.hh"
 #include "tokenizers.hh"
 #include "bench.hh"
-#include "wc.hh"
-#include "wc_boost.h"
+#include "pr.hh"
 
 #define DEFAULT_NDISP 10
 
-/* Hadoop print all the key/value paris at the end.  This option 
- * enables wordcount to print all pairs for fair comparison. */
-//#define HADOOP
-
-enum { with_value_modifier = 1 };
-
-struct wc : public mapreduce_appbase {
-    wc(const char *f, int nsplit) : s_(f, nsplit) {}
+struct pr : public mapreduce_appbase {
+    pr(const char *f, int nsplit) : s_(f, nsplit) {}
     bool split(split_t *ma, int ncores) {
         return s_.split(ma, ncores, " \t\r\n\0");
     }
@@ -63,15 +30,56 @@ struct wc : public mapreduce_appbase {
         return strcmp((const char *) s1, (const char *) s2);
     }
     void map_function(split_t *ma) {
-        char k[1024];
-        size_t klen;
+        uint32_t max_record_len = 67108864;
+        uint32_t max_ptrs = max_record_len >> 4;
+        char* rec = (char*)malloc(max_record_len);
+        char** neigh_ptrs = (char**)malloc(max_ptrs * sizeof(char*));
+
+        size_t record_len = 0;
+        bool not_empty = true;
         do {
-            split_word sw(ma);
-            while (sw.fill(k, 1024, klen)) {
-                k[klen] = '\0';
-                map_emit(k, (void *)(intptr_t)1, klen);
-                memset(k, 0, klen);
-            }
+            split_large_record sd(ma, s_.overlap(), "\n");
+            do {
+                not_empty = sd.fill(rec, max_record_len, record_len);
+
+                char *saveptr;
+                uint32_t neighbor_ctr = 0;                
+                // add a null character terminator
+                rec[record_len] = 0;
+
+                // get the first token as the key
+                char* k = strtok_r(rec, " ", &saveptr);
+                uint32_t klen = strlen(k);
+                char *spl;
+                PageRankPAO::PRValue v;
+                // tokenize the record
+                do {
+                    spl = strtok_r(NULL, " ", &saveptr);
+                    if (spl) {
+                        neigh_ptrs[neighbor_ctr++] = spl;
+                    }
+                } while (spl);
+                // create a PAO for the followed
+                v.rank = 0;
+/*
+                v.num_neigh = neighbor_ctr;
+                v.neigh = (char*)malloc(v.num_neigh * KEYLEN);
+                for (uint32_t i = 0; i < v.num_neigh; ++i)
+                    strcpy(v.neigh + i * KEYLEN, neigh_ptrs[i]);
+*/
+                v.num_neigh = 0;
+                v.neigh = NULL;
+                map_emit(k, &v, klen);
+
+                // emit PAOs for each of the followers
+                float pr_given = (float)1.0 / neighbor_ctr;
+                for (uint32_t i = 0; i < neighbor_ctr; ++i) {
+                    v.rank = pr_given;
+                    v.neigh = 0;
+                    v.num_neigh = 0;
+                    map_emit(neigh_ptrs[i], &v, strlen(neigh_ptrs[i]));
+                }                    
+            } while(not_empty);
         } while (s_.get_split_chunk(ma));
     }
     bool result_compare(const char* k1, const void* v1, 
@@ -82,14 +90,14 @@ struct wc : public mapreduce_appbase {
     }
 
     void print_results_header() {
-        printf("\nwordcount: results\n");
+        printf("\npagerank: results\n");
     }
 
     void print_record(FILE* f, const char* key, void* v) {
             fprintf(f, "%15s - %d\n", key, ptr2int<unsigned>(v));
     }
   private:
-    defsplitter s_;
+    large_overlap_splitter s_;
 };
 
 static void usage(char *prog) {
@@ -100,14 +108,12 @@ static void usage(char *prog) {
     printf("  -r #reduce tasks : # of reduce tasks\n");
     printf("  -l ntops : # of top val. pairs to display\n");
     printf("  -q : quiet output (for batch test)\n");
-    printf("  -x : use PAOs with pointers\n");
     printf("  -o filename : save output to a file\n");
     exit(EXIT_FAILURE);
 }
 
 int main(int argc, char *argv[]) {
     int nprocs = 0, map_tasks = 0, ndisp = 5, ntrees = 0;
-    int pointer_mode = 0;
     int quiet = 0;
     int c;
     if (argc < 2)
@@ -115,7 +121,7 @@ int main(int argc, char *argv[]) {
     char *fn = argv[1];
     FILE *fout = NULL;
 
-    while ((c = getopt(argc - 1, argv + 1, "p:t:s:l:m:r:qxo:")) != -1) {
+    while ((c = getopt(argc - 1, argv + 1, "p:t:s:l:m:r:qao:")) != -1) {
         switch (c) {
             case 'p':
                 nprocs = atoi(optarg);
@@ -131,9 +137,6 @@ int main(int argc, char *argv[]) {
                 break;
             case 'q':
                 quiet = 1;
-                break;
-            case 'x':
-                pointer_mode = 1;
                 break;
             case 'o':
                 fout = fopen(optarg, "w+");
@@ -151,20 +154,15 @@ int main(int argc, char *argv[]) {
     }
     mapreduce_appbase::initialize();
     /* get input file */
-    wc app(fn, map_tasks);
+    pr app(fn, map_tasks);
     app.set_ncore(nprocs);
     app.set_ntrees(ntrees);
-    Operations* ops;
-    if (pointer_mode)
-        ops = new WCBoostOperations();
-    else
-        ops = new WCPlainOperations();
+    Operations* ops = new PageRankOperations();
     app.set_ops(ops);
-    app.set_results_out(fout);
 
 //    ProfilerStart("/tmp/anon.perf");
     app.sched_run();
-//    app.print_stats();
+    app.print_stats();
     /* get the number of results to display */
     if (!quiet)
         app.print_results_header();
